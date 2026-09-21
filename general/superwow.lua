@@ -8,9 +8,6 @@ local L = setmetatable({}, {
     __index = function(t, k)
         local v = tostring(k)
         rawset(t, k, v)
-        if (LOCALE ~= "enUS") and (LOCALE ~= "enGB") then
-            OzLib.print("Locale fetch failed for superwow", "error")
-        end
         return v
     end
 })
@@ -31,26 +28,24 @@ if LOCALE == "zhCN" then
     L["Background sound"] = "背景声音"
     L["Uncapped sounds"] = "无限制声音"
     L["Loot Sparkle"] = "战利品闪光效果"
+    L["Automatically loots items when opening a loot window."] = "打开战利品窗口时自动拾取所有物品。"
+    L["Only autoloots when holding down the Shift key."] = "仅在按住Shift键时才自动拾取。"
+    L["Allows targeting and interacting through dead corpses."] = "允许鼠标点击穿透已死亡的尸体进行选项目标或移动。"
+    L["Enables game audio playback when WoW is running in the background."] = "当游戏在后台运行时继续播放游戏声音。"
+    L["Enables sparkling visual effect on lootable corpses and objects."] = "在可拾取的尸体或物体上显示发光粒子特效。"
+    L["Uncaps sound hardware/software channels to 64 for rich audio fidelity."] = "解除声道上限限制，提升至64通道以获得更丰富的声音细节。"
+    L["Camera field of view multiplier (1.0 to 2.5). Requires /rl to take effect."] = "镜头视野倍率(1.0 - 2.5)。需要输入 /rl 重载界面生效。"
+    L["Style of the selection indicator circle underneath your target."] = "当前选定目标脚下的光圈样式。"
 end
-
-local module = OzFramework:register("oz_superwow", {
-    title = L["SuperWoW"],
-    order = 4,
-    enabled = true,
-    config = {
-        ["superwow.autoloot"] = true,
-        ["superwow.clickthrough"] = false,
-        ["superwow.shiftloot"] = false,
-        ["superwow.fov"] = 1.5,
-        ["superwow.backgroundsound"] = true,
-        ["superwow.selectioncirclestyle"] = 1,
-        ["superwow.lootsparkle"] = true,
-        ["superwow.uncappedsounds"] = true,
-    }
-})
 
 -- Setting mutators
 local autoloot_frame = nil
+
+local function get_sw_config(key, default)
+    if not OZAIO_CONFIG then return default end
+    if OZAIO_CONFIG[key] ~= nil then return OZAIO_CONFIG[key] end
+    return default
+end
 
 local function apply_autoloot()
     if autoloot_frame then
@@ -58,7 +53,10 @@ local function apply_autoloot()
         autoloot_frame = nil
     end
 
-    if OZAIO_CONFIG["superwow.shiftloot"] then
+    local shiftLoot = get_sw_config("superwow.shift_loot", false)
+    local autoLoot = get_sw_config("superwow.auto_loot", true)
+
+    if shiftLoot then
         autoloot_frame = CreateFrame("Frame")
         autoloot_frame:SetScript("OnUpdate", function()
             if IsShiftKeyDown() then
@@ -67,7 +65,7 @@ local function apply_autoloot()
                 SetAutoloot(0)
             end
         end)
-    elseif OZAIO_CONFIG["superwow.autoloot"] then
+    elseif autoLoot then
         SetAutoloot(1)
     else
         SetAutoloot(0)
@@ -75,17 +73,17 @@ local function apply_autoloot()
 end
 
 local function set_autoloot(enabled)
-    OZAIO_CONFIG["superwow.autoloot"] = enabled
+    OZAIO_CONFIG["superwow.auto_loot"] = enabled
     if enabled then
-        OZAIO_CONFIG["superwow.shiftloot"] = false
+        OZAIO_CONFIG["superwow.shift_loot"] = false
     end
     apply_autoloot()
 end
 
 local function set_shift_loot(enabled)
-    OZAIO_CONFIG["superwow.shiftloot"] = enabled
+    OZAIO_CONFIG["superwow.shift_loot"] = enabled
     if enabled then
-        OZAIO_CONFIG["superwow.autoloot"] = false
+        OZAIO_CONFIG["superwow.auto_loot"] = false
     end
     apply_autoloot()
 end
@@ -103,14 +101,14 @@ local function set_bg_sound(enabled)
     else
         pcall(SetCVar, "BackgroundSound", "0")
     end
-    OZAIO_CONFIG["superwow.backgroundsound"] = enabled
+    OZAIO_CONFIG["superwow.background_sound"] = enabled
 end
 
 local function set_selection_circle_style(value)
     if value then
         pcall(SetCVar, "SelectionCircleStyle", tostring(value))
     end
-    OZAIO_CONFIG["superwow.selectioncirclestyle"] = value
+    OZAIO_CONFIG["superwow.selection_circle_style"] = value
 end
 
 local function set_loot_sparkle(enabled)
@@ -119,7 +117,7 @@ local function set_loot_sparkle(enabled)
     else
         pcall(SetCVar, "LootSparkle", "0")
     end
-    OZAIO_CONFIG["superwow.lootsparkle"] = enabled
+    OZAIO_CONFIG["superwow.loot_sparkle"] = enabled
 end
 
 local function set_uncapped_sound(enabled)
@@ -132,7 +130,7 @@ local function set_uncapped_sound(enabled)
         pcall(SetCVar, "SoundSoftwareChannels", "12")
         pcall(SetCVar, "SoundMaxHardwareChannels", "12")
     end
-    OZAIO_CONFIG["superwow.uncappedsounds"] = enabled
+    OZAIO_CONFIG["superwow.uncapped_sounds"] = enabled
 end
 
 local function set_clickthrough(enabled)
@@ -141,7 +139,7 @@ local function set_clickthrough(enabled)
     else
         Clickthrough(0)
     end
-    OZAIO_CONFIG["superwow.clickthrough"] = enabled
+    OZAIO_CONFIG["superwow.click_through"] = enabled
 end
 
 -- ================== SuperAPI-style hooks ==================
@@ -264,108 +262,136 @@ local function uninstall_api_hooks()
     QuestLogTitleButton_OnClick = orig_questlog_click
 end
 
-module.enable = function(self)
-    -- Extend macro frame to 511 characters
-    if MacroFrame_LoadUI then
-        MacroFrame_LoadUI()
-    end
-    if MacroFrameText then
-        MacroFrameText:SetMaxLetters(511)
-    end
-    MACROFRAME_CHAR_LIMIT = L["%d/511 Characters Used"]
+-- ================== Module Registration ==================
 
-    -- Override chat-bubble option strings for localization
-    OPTION_TOOLTIP_PARTY_CHAT_BUBBLES = L["Shows whisper, party, raid, and battleground chat text in speech bubbles above characters' heads."]
-    PARTY_CHAT_BUBBLES_TEXT = L["Show Whisper and Group Chat Bubbles"]
-
-    -- Apply initial CVar / autoloot state from saved values
-    set_clickthrough(OZAIO_CONFIG["superwow.clickthrough"])
-    set_loot_sparkle(OZAIO_CONFIG["superwow.lootsparkle"])
-    set_selection_circle_style(OZAIO_CONFIG["superwow.selectioncirclestyle"])
-    set_bg_sound(OZAIO_CONFIG["superwow.backgroundsound"])
-    set_uncapped_sound(OZAIO_CONFIG["superwow.uncappedsounds"])
-    apply_autoloot()
-
-    -- SuperAPI-style global hooks (spell links, item counts, unitframe
-    -- mouseover, combat text names, quest links)
-    install_api_hooks()
-end
-
-module.disable = function(self)
-    uninstall_api_hooks()
-end
-
-module.create_config_panel = function(self, parent)
-    local panel = CreateFrame("Frame", "OzSuperWowConfig", parent)
-    panel:SetAllPoints()
-
-    local flow = OzUIHelper:createFlow(panel, 10)
-    OzUIHelper:attachResize(panel, flow)
-
-    local title = OzUIHelper:makeLabel(panel, "SuperWoW" .. SUPERWOW_VERSION, "GameFontNormalLarge")
-    title:SetWidth(flow.maxWidth - flow.padding)
-    title:SetJustifyH("CENTER")
-    OzUIHelper:add(flow, title, flow.maxWidth - flow.padding, 20)
-
-    OzUIHelper:newLine(flow)
-
-    local autolootCb = OzUIHelper:makeCheckbox(panel, L["Autoloot (Read tooltip)"], OZAIO_CONFIG["superwow.autoloot"], function(checked)
-        set_autoloot(checked)
-    end)
-    OzUIHelper:add(flow, autolootCb)
-    OzUIHelper:newLine(flow)
-
-
-    local shiftlootCb = OzUIHelper:makeCheckbox(panel, L["Shift to toggle on"], OZAIO_CONFIG["superwow.shiftloot"], function(checked)
-        set_shift_loot(checked)
-    end)
-    OzUIHelper:add(flow, shiftlootCb)
-    OzUIHelper:newLine(flow)
-
-    local clickthroughCb = OzUIHelper:makeCheckbox(panel, L["Clickthrough corpses"], OZAIO_CONFIG["superwow.clickthrough"], function(checked)
-        set_clickthrough(checked)
-    end)
-    OzUIHelper:add(flow, clickthroughCb)
-    OzUIHelper:newLine(flow)
-
-    local bgsoundCb = OzUIHelper:makeCheckbox(panel, L["Background sound"], OZAIO_CONFIG["superwow.backgroundsound"], function(checked)
-        set_bg_sound(checked)
-    end)
-    OzUIHelper:add(flow, bgsoundCb)
-    
-
-    local lootsparkleCb = OzUIHelper:makeCheckbox(panel, L["Loot Sparkle"], OZAIO_CONFIG["superwow.lootsparkle"], function(checked)
-        set_loot_sparkle(checked)
-    end)
-    OzUIHelper:add(flow, lootsparkleCb)
-
-    local uncappedsoundCb = OzUIHelper:makeCheckbox(panel, L["Uncapped sounds"], OZAIO_CONFIG["superwow.uncappedsounds"], function(checked)
-        set_uncapped_sound(checked)
-    end)
-    OzUIHelper:add(flow, uncappedsoundCb)
-
-    OzUIHelper:newLine(flow)
-
-    local fovBox = OzUIHelper:makeLabeledEditBox(panel, L["Field of view (Requires reload)"], 60)
-    fovBox:SetValue(OZAIO_CONFIG["superwow.fov"])
-    fovBox:SetCallback(function(value)
-        if value then
-            set_fov(value)
+local module = OzFramework:registerMod({
+    name = "oz_superwow",
+    title = L["SuperWoW"],
+    category = "General",
+    order = 4,
+    enabled = true,
+    config = {
+        ["superwow.auto_loot"] = true,
+        ["superwow.click_through"] = false,
+        ["superwow.shift_loot"] = false,
+        ["superwow.fov"] = 1.5,
+        ["superwow.background_sound"] = true,
+        ["superwow.selection_circle_style"] = 1,
+        ["superwow.loot_sparkle"] = true,
+        ["superwow.uncapped_sounds"] = true,
+    },
+    config_ui_creator = {
+        {
+            type = "checkbox",
+            label = L["Autoloot (Read tooltip)"],
+            tooltip = L["Automatically loots items when opening a loot window."],
+            config_key = "superwow.auto_loot",
+            onChange = function(checked)
+                set_autoloot(checked)
+            end,
+        },
+        {
+            type = "checkbox",
+            label = L["Shift to toggle on"],
+            tooltip = L["Only autoloots when holding down the Shift key."],
+            config_key = "superwow.shift_loot",
+            onChange = function(checked)
+                set_shift_loot(checked)
+            end,
+        },
+        {
+            type = "checkbox",
+            label = L["Clickthrough corpses"],
+            tooltip = L["Allows targeting and interacting through dead corpses."],
+            config_key = "superwow.click_through",
+            onChange = function(checked)
+                set_clickthrough(checked)
+            end,
+        },
+        {
+            type = "checkbox",
+            label = L["Background sound"],
+            tooltip = L["Enables game audio playback when WoW is running in the background."],
+            config_key = "superwow.background_sound",
+            onChange = function(checked)
+                set_bg_sound(checked)
+            end,
+        },
+        {
+            type = "checkbox",
+            label = L["Loot Sparkle"],
+            tooltip = L["Enables sparkling visual effect on lootable corpses and objects."],
+            config_key = "superwow.loot_sparkle",
+            onChange = function(checked)
+                set_loot_sparkle(checked)
+            end,
+        },
+        {
+            type = "checkbox",
+            label = L["Uncapped sounds"],
+            tooltip = L["Uncaps sound hardware/software channels to 64 for rich audio fidelity."],
+            config_key = "superwow.uncapped_sounds",
+            onChange = function(checked)
+                set_uncapped_sound(checked)
+            end,
+        },
+        { type = "space", height = 6 },
+        {
+            type = "slider",
+            label = L["Field of view (Requires reload)"],
+            tooltip = L["Camera field of view multiplier (1.0 to 2.5). Requires /rl to take effect."],
+            min = 1.0,
+            max = 2.5,
+            step = 0.1,
+            config_key = "superwow.fov",
+            onChange = function(val)
+                set_fov(val)
+            end,
+        },
+        { type = "space", height = 6 },
+        {
+            type = "dropdown",
+            label = L["Selection circle style"],
+            tooltip = L["Style of the selection indicator circle underneath your target."],
+            options = {
+                { label = L["Default - incomplete circle"], value = 1 },
+                { label = L["Full circle"], value = 2 },
+                { label = L["Full circle with arrow"], value = 3 },
+                { label = L["Classic oriented circle"], value = 4 },
+            },
+            config_key = "superwow.selection_circle_style",
+            onChange = function(val)
+                set_selection_circle_style(val)
+            end,
+        },
+    },
+    enable = function(self)
+        -- Extend macro frame to 511 characters
+        if MacroFrame_LoadUI then
+            MacroFrame_LoadUI()
         end
-    end)
-    OzUIHelper:add(flow, fovBox)
+        if MacroFrameText then
+            MacroFrameText:SetMaxLetters(511)
+        end
+        MACROFRAME_CHAR_LIMIT = L["%d/511 Characters Used"]
 
-    OzUIHelper:newLine(flow)
+        -- Override chat-bubble option strings for localization
+        OPTION_TOOLTIP_PARTY_CHAT_BUBBLES = L["Shows whisper, party, raid, and battleground chat text in speech bubbles above characters' heads."]
+        PARTY_CHAT_BUBBLES_TEXT = L["Show Whisper and Group Chat Bubbles"]
 
-    local circleMenu = OzUIHelper:makeDropdown(panel, L["Selection circle style"], {
-        { label = L["Default - incomplete circle"], value = 1 },
-        { label = L["Full circle"], value = 2 },
-        { label = L["Full circle with arrow"], value = 3 },
-        { label = L["Classic oriented circle"], value = 4 },
-    }, OZAIO_CONFIG["superwow.selectioncirclestyle"], function(value)
-        set_selection_circle_style(value)
-    end)
-    OzUIHelper:add(flow, circleMenu)
+        -- Apply initial CVar / autoloot state from saved values
+        set_clickthrough(get_sw_config("superwow.click_through", false))
+        set_loot_sparkle(get_sw_config("superwow.loot_sparkle", true))
+        set_selection_circle_style(get_sw_config("superwow.selection_circle_style", 1))
+        set_bg_sound(get_sw_config("superwow.background_sound", true))
+        set_uncapped_sound(get_sw_config("superwow.uncapped_sounds", true))
+        apply_autoloot()
 
-    return { frame = panel, height = math.abs(flow.y) + flow.padding }
-end
+        -- SuperAPI-style global hooks (spell links, item counts, unitframe
+        -- mouseover, combat text names, quest links)
+        install_api_hooks()
+    end,
+    disable = function(self)
+        uninstall_api_hooks()
+    end,
+})

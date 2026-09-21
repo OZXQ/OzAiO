@@ -3,13 +3,12 @@
 -- Ported from Automaton/WorldBuffs.lua logic
 
 local locale = GetLocale()
+local PLAYER_NAME = UnitName("player")
+
 local L = setmetatable({}, {
     __index = function(t, k)
         local v = tostring(k)
         rawset(t, k, v)
-        if OZAIO_DEBUG and (locale ~= "enUS") and (locale ~= "enGB") then
-            OzLib.print("Locale fetch failed for worldbuff: " .. v, "error")
-        end
         return v
     end
 })
@@ -45,22 +44,13 @@ if locale == "zhCN" then
     L["Party"] = "小队"
     L["Raid"] = "团队"
     L["Hardcore"] = "硬核"
--- else
---     L["World Buff"] = "Dragon Buff Alert"
---     L["Enable"] = "Enable"
---     L["Countdown bar"] = "Countdown bar"
---     L["Sound alert"] = "Sound alert"
---     L["Hearthstone button"] = "Hearthstone button"
---     L["Guild notify"] = "Guild notify"
---     L["Auto logout"] = "Auto logout"
---     L["Auto logout after buff"] = "Auto logout after buff"
---     L["Notice! "] = "Notice! "
---     L[" Buff in "] = " buff in "
---     L[" secs"] = " secs"
---     L["Auto logout cancelled: in combat"] = "Auto logout cancelled: in combat"
---     L["World buff incoming, logout in 60s"] = "World buff incoming, logout in 60s"
---     L["Invalid dragon type, use Onyxia or Nefarian"] = "Invalid dragon type, use Onyxia or Nefarian"
---     L["Test world buff: "] = "Test world buff: "
+    L["Master switch for dragon world buff alerts and timer sync."] = "世界BUFF监测及计时同步总开关。"
+    L["Display a visual countdown bar when a world buff is dropping."] = "当世界BUFF即将发放时在屏幕中央显示倒计时提醒。"
+    L["Play an audio alert when a world buff drop yell is detected."] = "当检测到龙头NPC大喊时播放警报音效。"
+    L["Show an emergency 1-click hearthstone button during the countdown."] = "倒计时期间在屏幕上显示一键紧急炉石快捷按键。"
+    L["Show draggable floating HUD tracking active dragon buff cooldowns."] = "在屏幕上显示可拖动的龙头增益冷却计时浮动窗。"
+    L["Broadcast incoming buff alerts to guild chat."] = "向公会频道通告即将发放的世界BUFF信息。"
+    L["Automatically log out 60 seconds after buff drop to preserve buff duration."] = "获得增益60秒后自动登出角色以保留BUFF时长。"
 end
 
 -- Dragon NPC data by faction
@@ -157,8 +147,8 @@ local function create_caution_frame()
     caution.string:SetFont(FONT_PATH, 48, "OUTLINE")
     caution:Hide()
 
-    caution_onupdate = function(elapsed)
-        -- The ticker only calls this while the frame is visible
+    caution:SetScript("OnUpdate", function()
+        local elapsed = arg1
         if is_fading_out then
             caution_elapsed = caution_elapsed + elapsed
         else
@@ -176,7 +166,6 @@ local function create_caution_frame()
             countdown_time = countdown_time - elapsed
             if countdown_time <= 0 then
                 countdown_active = false
-                -- The consolidated ticker checks IsShown(), so just hide
                 caution:Hide()
                 if hearthstone_button then hearthstone_button:Hide() end
             else
@@ -193,7 +182,7 @@ local function create_caution_frame()
             end
         end
         caution.string:SetTextColor(caution_elapsed, 1, 0, caution_elapsed)
-    end
+    end)
 end
 
 -- fix #3: reset fade state on show
@@ -203,43 +192,47 @@ local function show_caution()
     caution:Show()
 end
 
--- ================== UI: Hearthstone Button (fix #5, #14) ==================
+-- ================== UI: Hearthstone Button ==================
 local hearthstone_button
 local hearthstone_icon_texture
 local hearthstone_hide_time = nil
 
--- fix #2, #4: use string.find; item ID 6948 is sufficient, no GetItemInfo fallback needed
--- Vanilla bag iteration is slow, so cache the stone's bag/slot and only
--- rescan when BAG_UPDATE fires.
-local hearthstone_bag = nil
-local hearthstone_slot = nil
-local hearthstone_cached = false
+local HEARTHSTONE_ITEM_ID = 6948
 
-local function invalidate_hearthstone()
-    hearthstone_cached = false
+local function is_hearthstone(bag, slot)
+    if not bag or not slot or bag < 0 or slot < 1 then return false end
+    local link = GetContainerItemLink(bag, slot)
+    if link and string.find(link, "item:6948") then
+        return true
+    end
+    return false
 end
 
 local function find_hearthstone()
-    if hearthstone_cached then
-        return hearthstone_bag, hearthstone_slot
+    if not OZAIO then OZAIO = {} end
+    if OZAIO["hs_bag"] == nil then OZAIO["hs_bag"] = 0 end
+    if OZAIO["hs_slot"] == nil then OZAIO["hs_slot"] = 0 end
+
+    local bag = OZAIO["hs_bag"]
+    local slot = OZAIO["hs_slot"]
+
+    if bag and slot and slot > 0 and is_hearthstone(bag, slot) then
+        return bag, slot
     end
-    for bag = 0, NUM_BAG_SLOTS do
-        for slot = 1, GetContainerNumSlots(bag) do
-            local itemLink = GetContainerItemLink(bag, slot)
-            if itemLink then
-                local _, _, id_str = string.find(itemLink, "item:(%d+)")
-                local id = tonumber(id_str)
-                if id and id == 6948 then
-                    hearthstone_bag = bag
-                    hearthstone_slot = slot
-                    hearthstone_cached = true
-                    return bag, slot
-                end
+
+    for b = 0, NUM_BAG_SLOTS do
+        for s = 1, GetContainerNumSlots(b) do
+            if is_hearthstone(b, s) then
+                OZAIO["hs_bag"] = b
+                OZAIO["hs_slot"] = s
+                return b, s
             end
         end
     end
-    hearthstone_cached = true -- cache "not found" too; BAG_UPDATE will rescan
-    return nil
+
+    OZAIO["hs_bag"] = 0
+    OZAIO["hs_slot"] = 0
+    return nil, nil
 end
 
 local function create_hearthstone_button()
@@ -251,7 +244,6 @@ local function create_hearthstone_button()
 
     hearthstone_icon_texture = hearthstone_button:CreateTexture(nil, "BACKGROUND")
     hearthstone_icon_texture:SetAllPoints()
-    -- Set a fallback icon in case find_hearthstone fails
     hearthstone_icon_texture:SetTexture("Interface\\Icons\\INV_Misc_Rune_01")
 
     hearthstone_button:SetScript("OnEnter", function() hearthstone_icon_texture:SetAlpha(0.8) end)
@@ -261,14 +253,14 @@ local function create_hearthstone_button()
 
     hearthstone_button:SetScript("OnClick", function()
         local bag, slot = find_hearthstone()
-        if bag then
+        if bag and slot and slot > 0 then
             local texture = GetContainerItemInfo(bag, slot)
             if texture then
                 UseContainerItem(bag, slot)
                 hearthstone_button:Hide()
             else
-                -- Stone moved without BAG_UPDATE: drop the stale cache
-                invalidate_hearthstone()
+                OZAIO["hs_bag"] = 0
+                OZAIO["hs_slot"] = 0
                 hearthstone_button:Hide()
             end
         end
@@ -279,7 +271,7 @@ end
 local function update_hearthstone_icon()
     if not hearthstone_button or not hearthstone_icon_texture then return end
     local bag, slot = find_hearthstone()
-    if bag then
+    if bag and slot and slot > 0 then
         local texture = GetContainerItemInfo(bag, slot)
         if texture then
             hearthstone_icon_texture:SetTexture(texture)
@@ -292,7 +284,6 @@ local function show_hearthstone_button()
     create_hearthstone_button()
     update_hearthstone_icon()
     hearthstone_button:Show()
-    -- fix #1: use OnUpdate-based timer instead of C_Timer.After
     hearthstone_hide_time = GetTime() + 10
 end
 
@@ -371,7 +362,7 @@ local function trigger_alert(dragon_faction, dragon_type, countdown_secs)
     end
 
     -- Auto logout
-    if get_config("worldbuff.autoLogout") then
+    if get_config("worldbuff.auto_logout") then
         logout_at = now + 60
         DEFAULT_CHAT_FRAME:AddMessage("|cFFFF8800[WorldBuff] " .. L["World buff incoming, logout in 60s"] .. "|r")
     end
@@ -521,10 +512,21 @@ local function format_twb_sync()
     return "SyncS:" .. text
 end
 
+-- Cached channel numbers for fast integer checks on CHAT_MSG_CHANNEL
+local twb_channel_num = nil
+local lft_channel_num = nil
+
+local function update_channel_nums()
+    local t = GetChannelName(TWB_CHANNEL)
+    twb_channel_num = (t and t > 0) and t or nil
+    local l = GetChannelName(LFT_CHANNEL)
+    lft_channel_num = (l and l > 0) and l or nil
+end
+
 local function send_twb_message(msg)
-    local channel = GetChannelName(TWB_CHANNEL)
-    if channel and channel > 0 then
-        SendChatMessage(msg, "CHANNEL", nil, channel)
+    if not twb_channel_num then update_channel_nums() end
+    if twb_channel_num and twb_channel_num > 0 then
+        SendChatMessage(msg, "CHANNEL", nil, twb_channel_num)
     end
 end
 
@@ -532,17 +534,19 @@ local function join_twb_channel()
     if not get_config("worldbuff.enabled") then return end
     local chanList = { GetChannelList() }
     for k, v in next, chanList do
-        if v == TWB_CHANNEL then return end
+        if v == TWB_CHANNEL then
+            update_channel_nums()
+            return
+        end
     end
     JoinChannelByName(TWB_CHANNEL)
+    update_channel_nums()
 end
 
 local function on_twb_channel_join()
     if not get_config("worldbuff.enabled") then return end
-    -- CHAT_MSG_CHANNEL_JOIN fires for anyone joining the channel, not just
-    -- ourselves; only respond when we joined, or every joiner would trigger
-    -- a SyncS storm from all enabled clients.
-    if arg2 ~= UnitName("player") then return end
+    if arg2 ~= PLAYER_NAME then return end
+    update_channel_nums()
     if string.lower(arg9 or "") ~= string.lower(TWB_CHANNEL) then return end
     local msg = format_twb_sync()
     if msg then send_twb_message(msg) end
@@ -550,8 +554,7 @@ end
 
 local function on_twb_channel_message()
     if not get_config("worldbuff.enabled") then return end
-    if arg2 == UnitName("player") then return end
-    if string.lower(arg9 or "") ~= string.lower(TWB_CHANNEL) then return end
+    if arg2 == PLAYER_NAME then return end
     if string.find(arg1, "^SyncS:") then
         parse_twb_sync(string.sub(arg1, 7))
     elseif string.find(arg1, "^Lightning:") then
@@ -583,242 +586,23 @@ end
 
 -- TWB per-second maintenance moved into the consolidated ticker below.
 
--- ================== UI: Timer Frame (PizzaWorldBuff style) ==================
-local timer_frame
-local timer_lines = {}
-
--- Faction brackets: 【LM】/【BL】 in zhCN, [A]/[H] otherwise (locale fallback).
-local TIMER_ROW_PREFIX = {
-    Alliance = L["[A] "],
-    Horde = L["[H] "],
-}
-
--- Dragon-only names (the faction bracket is implied by the row/line).
-local DRAGON_LABELS = {
-    Onyxia   = L["Onyxia "],
-    Nefarian = L["Nefarian "],
-}
-
--- Whole minutes, rounded up, wrapped in angle brackets: "<61分>" / "<61min>".
--- Used by both the timer frame rows and the chat report.
-local function format_remaining_short(secs)
-    return string.format("<%d%s>", math.ceil(secs / 60), L["m"])
-end
-
--- Missing-buff marker: "<暂无>" / "<None>".
-local function format_none_bracket()
-    return "<" .. L["None"] .. ">"
-end
-
--- "<bracket><dragon>" prefix of a timer row, e.g. "【LM】黑龙".
-local function timer_row_prefix(key)
-    local us = string.find(key, "_")
-    return TIMER_ROW_PREFIX[string.sub(key, 1, us - 1)] .. DRAGON_LABELS[string.sub(key, us + 1)]
-end
-
--- ================== Share Timer Menu (right-click) ==================
--- Right-clicking the timer frame opens a dropdown to send the current dragon
--- timers to a chat destination: say / yell / guild / party / raid or any of
--- the channels the player has joined.
-local timer_menu = CreateFrame("Frame", "OzAiOWorldBuffMenu", UIParent, "UIDropDownMenuTemplate")
-
--- Returns two report lines (Alliance, Horde), e.g. zhCN:
---   【LM】黑龙<61分>奈法<暂无>
---   【BL】黑龙<55分>奈法<106分>
--- Both dragons of a faction are always present; a missing buff prints a
--- bracket None instead of dropping the entry.
-local function format_timer_summary()
-    local st = server_time_now()
-    local alliance = {}
-    local horde = {}
-
-    for _, key in ipairs(wb_timer_keys) do
-        local faction = string.sub(key, 1, string.find(key, "_") - 1)
-        local dragon = string.sub(key, string.find(key, "_") + 1)
-        local t = wb_timers[key]
-        local time_text
-        if t and t.active and t.to and st and t.to > st then
-            time_text = format_remaining_short(t.to - st)
-        else
-            time_text = format_none_bracket()
-        end
-        local parts = faction == "Alliance" and alliance or horde
-        table.insert(parts, DRAGON_LABELS[dragon] .. time_text)
-    end
-
-    return TIMER_ROW_PREFIX.Alliance .. table.concat(alliance),
-           TIMER_ROW_PREFIX.Horde .. table.concat(horde)
-end
-
-local function timer_menu_initialize()
-    -- add_target keeps its args in locals (Lua 5.0: no shared loop vars)
-    local function add_target(text, chat_type, channel_num)
-        local info = {}
-        info.text = text
-        info.notCheckable = true
-        info.func = function()
-            -- format_timer_summary returns one line per faction; send each
-            -- line as its own chat message. Both lines always have content
-            -- (missing buffs print a bracket None).
-            local alliance_line, horde_line = format_timer_summary()
-            local function send_line(msg)
-                if chat_type == "CHANNEL" then
-                    SendChatMessage(msg, "CHANNEL", nil, channel_num)
-                else
-                    SendChatMessage(msg, chat_type)
-                end
-            end
-            if alliance_line ~= "" then
-                send_line(alliance_line)
-            end
-            if horde_line ~= "" then
-                send_line(horde_line)
-            end
-        end
-        UIDropDownMenu_AddButton(info)
-    end
-
-    local title = {}
-    title.text = L["Send timer to"]
-    title.isTitle = true
-    title.notCheckable = true
-    UIDropDownMenu_AddButton(title)
-
-    -- Chat type labels are L keys, not the SAY/YELL/GUILD client globals:
-    -- those are not defined consistently across 1.12-based clients (this one
-    -- leaves YELL/GUILD unset, which rendered empty menu rows).
-    add_target(L["Say"], "SAY")
-    add_target(L["Yell"], "YELL")
-    if IsInGuild() then
-        add_target(L["Guild"], "GUILD")
-    end
-    if GetNumPartyMembers() > 0 then
-        add_target(L["Party"], "PARTY")
-    end
-    if GetNumRaidMembers() > 0 then
-        add_target(L["Raid"], "RAID")
-    end
-
-    -- "Hardcore" is a first-class Turtle WoW chat type (CHAT_MSG_HARDCORE),
-    -- not a regular joined channel, so it is listed explicitly and excluded
-    -- from the dynamic channel list below.
-    add_target(L["Hardcore"], "Hardcore")
-
-    -- Joined chat channels (skip TWB: the machine sync channel, and Hardcore:
-    -- already listed above). This is dynamic: any custom channel the player
-    -- joins (e.g. "bestplayer") shows up here automatically. GetChannelList()
-    -- pair order differs across 1.12-based clients (Blizzard: name, number;
-    -- some repacks: number, name), so the element types are checked instead
-    -- of assuming an order.
-    local channels = { GetChannelList() }
-    local channel_entries = {}
-    for i = 1, table.getn(channels), 2 do
-        local first, second = channels[i], channels[i + 1]
-        local name, num
-        if type(first) == "number" then
-            name, num = second, first
-        else
-            name, num = first, second
-        end
-        local is_hardcore = type(name) == "string"
-            and (string.lower(name) == "hardcore" or name == "硬核")
-        -- TWB is the machine sync channel; LFT is intentionally excluded to
-        -- avoid automatic world-buff spam in the global looking-for-group
-        -- channel.
-        if name and not is_hardcore and name ~= TWB_CHANNEL and name ~= LFT_CHANNEL then
-            table.insert(channel_entries, { name, num })
-        end
-    end
-    for _, entry in ipairs(channel_entries) do
-        add_target(entry[1], "CHANNEL", entry[2])
-    end
-end
-
--- Create the per-timer font strings on the timer frame (called once from
--- create_timer_frame). The rows are created together, so they are never
--- missing while the frame exists.
-local function create_timer_lines()
-    local row_y = -24
-    for _, key in ipairs(wb_timer_keys) do
-        local line = timer_frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        line:SetPoint("TOPLEFT", timer_frame, "TOPLEFT", 8, row_y)
-        if string.sub(key, 1, string.find(key, "_") - 1) == "Alliance" then
-            line:SetTextColor(0.3, 0.6, 1)
-        else
-            line:SetTextColor(1, 0.35, 0.35)
-        end
-        line:SetText(timer_row_prefix(key) .. format_none_bracket())
-        timer_lines[key] = line
-        row_y = row_y - 16
+-- ================== UI: Timer Frame (Delegated to OzWorldBuffHUD) ==================
+local function init_worldbuff_hud()
+    if OzWorldBuffHUD and OzWorldBuffHUD.init then
+        OzWorldBuffHUD:init(server_time_now, wb_timers, get_config, set_config, L)
     end
 end
 
 local function create_timer_frame()
-    if timer_frame then return end
-    timer_frame = CreateFrame("Frame", "OzAiOWorldBuffTimer", UIParent)
-    timer_frame:SetWidth(100)
-    timer_frame:SetHeight(92)
-    timer_frame:SetFrameStrata("MEDIUM")
-    timer_frame:EnableMouse(true)
-    timer_frame:SetMovable(true)
-    timer_frame:RegisterForDrag("LeftButton")
-
-    -- Transparent background, no border
-    timer_frame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        tile = true, tileSize = 16,
-    })
-    timer_frame:SetBackdropColor(0, 0, 0, 0.4)
-    timer_frame:SetBackdropBorderColor(0, 0, 0, 0)
-
-    local title = timer_frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    title:SetPoint("TOP", timer_frame, "TOP", 0, -4)
-    title:SetText(L["World Buff Timer"])
-    title:SetTextColor(1, 0.9, 0.5)
-
-    create_timer_lines()
-
-    -- Drag anywhere on the frame; persist the position in config
-    timer_frame:SetScript("OnDragStart", function()
-        this:StartMoving()
-    end)
-    timer_frame:SetScript("OnDragStop", function()
-        this:StopMovingOrSizing()
-        local left, bottom = timer_frame:GetLeft(), timer_frame:GetBottom()
-        local ul, ub = UIParent:GetLeft(), UIParent:GetBottom()
-        if left and ul then
-            set_config("worldbuff.timerPos", { left - ul, bottom - ub })
-        end
-    end)
-
-    -- Right-click opens the "send timer to" chat menu. Plain frames have no
-    -- RegisterForClicks in 1.12 (Button-only API), so right-clicks are
-    -- detected via OnMouseUp, which fires on any mouse-enabled frame.
-    timer_frame:SetScript("OnMouseUp", function()
-        if arg1 == "RightButton" then
-            UIDropDownMenu_Initialize(timer_menu, timer_menu_initialize)
-            ToggleDropDownMenu(1, nil, timer_menu, timer_frame:GetName(), 0, 0)
-        end
-    end)
-
-    local pos = get_config("worldbuff.timerPos")
-    timer_frame:ClearAllPoints()
-    if pos then
-        timer_frame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", pos[1], pos[2])
-    else
-        -- Default to the right side of the screen, clear of chat and action bars
-        timer_frame:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -120, -140)
+    init_worldbuff_hud()
+    if OzWorldBuffHUD and OzWorldBuffHUD.create then
+        return OzWorldBuffHUD:create()
     end
-
-    -- Countdown text is refreshed once per second by the consolidated ticker
 end
 
 local function update_timer_frame()
-    if not timer_frame then return end
-    if get_config("worldbuff.enabled") and get_config("worldbuff.timer") then
-        timer_frame:Show()
-    else
-        timer_frame:Hide()
+    if OzWorldBuffHUD and OzWorldBuffHUD.updateVisibility then
+        OzWorldBuffHUD:updateVisibility(get_config("worldbuff.enabled"), get_config("worldbuff.timer"))
     end
 end
 
@@ -841,7 +625,7 @@ local function on_second_tick()
     local now = GetTime()
 
     -- Auto logout (combat-safe) and hearthstone auto-hide
-    if get_config("worldbuff.autoLogout") then
+    if get_config("worldbuff.auto_logout") then
         check_logout(now)
     end
     if hearthstone_hide_time and now >= hearthstone_hide_time then
@@ -893,33 +677,16 @@ local function on_second_tick()
         end
     end
 
-    -- Timer frame countdown text (once per second while shown)
-    if timer_frame and timer_frame:IsShown() then
-        local st = server_time_now()
-        for _, key in ipairs(wb_timer_keys) do
-            local line = timer_lines[key]
-            if line then
-                local t = wb_timers[key]
-                local text = timer_row_prefix(key)
-                if t and t.active and t.to and st and t.to - st > 0 then
-                    text = text .. format_remaining_short(t.to - st)
-                else
-                    text = text .. format_none_bracket()
-                end
-                line:SetText(text)
-            end
-        end
+    -- Timer frame countdown text (delegated to OzWorldBuffHUD with timestamp-skipping)
+    if OzWorldBuffHUD and OzWorldBuffHUD.isShown and OzWorldBuffHUD:isShown() then
+        OzWorldBuffHUD:update(server_time_now(), wb_timers)
     end
 end
 
 ticker_frame:SetScript("OnUpdate", function()
     -- Disabled: the frame is hidden, so no per-frame work runs
     if not this:IsShown() then return end
-    local elapsed = arg1
-    if caution and caution:IsShown() then
-        caution_onupdate(elapsed)
-    end
-    tick_elapsed = tick_elapsed + elapsed
+    tick_elapsed = tick_elapsed + arg1
     if tick_elapsed >= 1 then
         tick_elapsed = tick_elapsed - 1
         on_second_tick()
@@ -936,22 +703,18 @@ local function on_monster_yell()
     local npc_name = arg2
     local yell_text = arg1
 
-    -- fix #10: use ipairs over ordered list instead of pairs
     for _, dragon_type in ipairs(dragon_types_list) do
         local info = npcs[dragon_type]
         if info and npc_name == info.name and string.find(yell_text, info.yell) then
-            -- fix #8: check channel exists before sending
-            local channel = GetChannelName(LFT_CHANNEL)
-            if channel and channel > 0 then
+            if not lft_channel_num then update_channel_nums() end
+            if lft_channel_num and lft_channel_num > 0 then
                 SendChatMessage(
                     RELAY_PREFIX .. ":" .. dragon_type .. ":" .. faction,
                     "CHANNEL",
                     nil,
-                    channel
+                    lft_channel_num
                 )
             end
-            -- Feed the TWB sync network so other players see the timer;
-            -- state change first, then the local UI/notifications.
             notify_twb(faction, dragon_type)
             trigger_alert(faction, dragon_type)
             return
@@ -961,10 +724,8 @@ end
 
 local function on_channel_message()
     if not get_config("worldbuff.enabled") then return end
-    if arg2 == UnitName("player") then return end
-    if string.lower(arg9 or "") ~= string.lower(LFT_CHANNEL) then return end
+    if arg2 == PLAYER_NAME then return end
 
-    -- fix #1, #9: capture groups with brackets to extract values
     local _, _, dragon_type, dragon_faction = string.find(
         arg1,
         "^" .. RELAY_PREFIX .. ":([^:]+):([^:]+)$"
@@ -974,16 +735,51 @@ local function on_channel_message()
     end
 end
 
+-- Fast dispatcher checking arg8 channel number before doing any string operations
+local function on_channel_event()
+    if not get_config("worldbuff.enabled") then return end
+    if arg2 == PLAYER_NAME then return end
+
+    local chan_num = arg8
+    if not twb_channel_num or not lft_channel_num then
+        update_channel_nums()
+    end
+
+    if (chan_num and chan_num == twb_channel_num) or (arg9 and string.lower(arg9) == "twb") then
+        on_twb_channel_message()
+    elseif (chan_num and chan_num == lft_channel_num) or (arg9 and string.lower(arg9) == "lft") then
+        on_channel_message()
+    end
+end
+
+-- Unregister CHAT_MSG_SYSTEM as soon as server_time_offset is synced
+local function on_system_message()
+    if not get_config("worldbuff.enabled") then return end
+    if server_time_offset ~= nil then return end
+
+    local _, _, dd, mm, yyyy, hh, mi, ss = string.find(
+        arg1,
+        "(%d+)[%.%/](%d+)[%.%/](%d+)%s*(%d+):(%d+):(%d+)"
+    )
+    if not dd then return end
+    local st = time({
+        year = tonumber(yyyy), month = tonumber(mm), day = tonumber(dd),
+        hour = tonumber(hh), min = tonumber(mi), sec = tonumber(ss)
+    })
+    if st and math.abs(st - time()) < 2 * 86400 then
+        server_time_offset = st - time()
+        if event_frame then
+            event_frame:UnregisterEvent("CHAT_MSG_SYSTEM")
+        end
+    end
+end
+
 -- ================== Event Frame ==================
--- Registered as a whole by module.enable() and dropped by module.disable()'s
--- UnregisterAllEvents, so no event work runs while the module is disabled.
 local EVENTS = {
     "CHAT_MSG_MONSTER_YELL",
     "CHAT_MSG_CHANNEL",
     "CHAT_MSG_CHANNEL_JOIN",
-    "CHAT_MSG_SYSTEM",
     "PLAYER_ENTERING_WORLD",
-    "BAG_UPDATE",
 }
 
 local event_frame = CreateFrame("Frame", "OzAiOWorldBuffEvents", UIParent)
@@ -991,19 +787,17 @@ event_frame:SetScript("OnEvent", function()
     if event == "CHAT_MSG_MONSTER_YELL" then
         on_monster_yell()
     elseif event == "CHAT_MSG_CHANNEL" then
-        if string.lower(arg9 or "") == string.lower(TWB_CHANNEL) then
-            on_twb_channel_message()
-        else
-            on_channel_message()
-        end
+        on_channel_event()
     elseif event == "CHAT_MSG_CHANNEL_JOIN" then
         on_twb_channel_join()
     elseif event == "CHAT_MSG_SYSTEM" then
         on_system_message()
     elseif event == "PLAYER_ENTERING_WORLD" then
+        if not PLAYER_NAME or PLAYER_NAME == "" or PLAYER_NAME == "Unknown" then
+            PLAYER_NAME = UnitName("player")
+        end
+        update_channel_nums()
         request_server_time()
-    elseif event == "BAG_UPDATE" then
-        invalidate_hearthstone()
     end
 end)
 
@@ -1031,8 +825,13 @@ SlashCmdList["OZWORLDBUFF"] = function(msg)
 end
 
 -- ================== Module Registration ==================
-local module = OzFramework:register("oz_worldbuff", {
+-- ================== Module Registration ==================
+
+local module
+module = OzFramework:registerMod({
+    name = "oz_worldbuff",
     title = L["World Buff"],
+    category = "Buff",
     order = 5,
     enabled = true,
     config = {
@@ -1042,102 +841,121 @@ local module = OzFramework:register("oz_worldbuff", {
         ["worldbuff.hearthstone"] = true,
         ["worldbuff.timer"] = true,
         ["worldbuff.guild"] = false,
-        ["worldbuff.autoLogout"] = false,
-    }
+        ["worldbuff.auto_logout"] = false,
+        ["worldbuff.timer_pos"] = { 100, 300 },
+    },
+    config_ui_creator = {
+        {
+            type = "checkbox",
+            label = L["Enable"],
+            tooltip = L["Master switch for dragon world buff alerts and timer sync."],
+            config_key = "worldbuff.enabled",
+            onChange = function(checked)
+                set_config("worldbuff.enabled", checked)
+                if checked then
+                    module:enable()
+                else
+                    module:disable()
+                end
+            end,
+        },
+        {
+            type = "checkbox",
+            label = L["Countdown bar"],
+            tooltip = L["Display a visual countdown bar when a world buff is dropping."],
+            config_key = "worldbuff.countdown",
+            onChange = function(checked)
+                set_config("worldbuff.countdown", checked)
+            end,
+        },
+        {
+            type = "checkbox",
+            label = L["Sound alert"],
+            tooltip = L["Play an audio alert when a world buff drop yell is detected."],
+            config_key = "worldbuff.sound",
+            onChange = function(checked)
+                set_config("worldbuff.sound", checked)
+            end,
+        },
+        {
+            type = "checkbox",
+            label = L["Hearthstone button"],
+            tooltip = L["Show an emergency 1-click hearthstone button during the countdown."],
+            config_key = "worldbuff.hearthstone",
+            onChange = function(checked)
+                set_config("worldbuff.hearthstone", checked)
+            end,
+        },
+        {
+            type = "checkbox",
+            label = L["Timer frame"],
+            tooltip = L["Show draggable floating HUD tracking active dragon buff cooldowns."],
+            config_key = "worldbuff.timer",
+            onChange = function(checked)
+                set_config("worldbuff.timer", checked)
+                update_timer_frame()
+            end,
+        },
+        {
+            type = "checkbox",
+            label = L["Guild notify"],
+            tooltip = L["Broadcast incoming buff alerts to guild chat."],
+            config_key = "worldbuff.guild",
+            onChange = function(checked)
+                set_config("worldbuff.guild", checked)
+            end,
+        },
+        {
+            type = "checkbox",
+            label = L["Auto logout"],
+            tooltip = L["Automatically log out 60 seconds after buff drop to preserve buff duration."],
+            config_key = "worldbuff.auto_logout",
+            onChange = function(checked)
+                set_config("worldbuff.auto_logout", checked)
+            end,
+        },
+    },
+    enable = function(self)
+        -- worldbuff.enabled is the user-facing master switch: if it is off,
+        -- nothing below runs even though the framework enabled the module.
+        if not get_config("worldbuff.enabled") then return end
+        for _, event in ipairs(EVENTS) do
+            event_frame:RegisterEvent(event)
+        end
+        if not server_time_offset then
+            event_frame:RegisterEvent("CHAT_MSG_SYSTEM")
+        end
+        ticker_frame:Show()
+        -- Fresh server-time retry budget on every enable
+        server_retry_elapsed = 0
+        server_retry_count = 0
+        server_retry_interval = SERVER_RETRY_INITIAL_INTERVAL
+        create_caution_frame()
+        create_hearthstone_button()
+        create_timer_frame()
+        join_twb_channel()
+        request_server_time()
+        update_timer_frame()
+    end,
+    disable = function(self)
+        -- Drop the config cache so a later re-enable re-reads OZAIO_CONFIG
+        for k in pairs(config_cache) do
+            config_cache[k] = nil
+        end
+        logout_at = nil
+        hearthstone_hide_time = nil
+        countdown_active = false
+        pending_twb_kill = nil
+        ticker_frame:Hide()
+        event_frame:UnregisterAllEvents()
+        if caution then
+            caution:Hide()
+        end
+        if hearthstone_button then
+            hearthstone_button:Hide()
+        end
+        if OzWorldBuffHUD and OzWorldBuffHUD.hide then
+            OzWorldBuffHUD:hide()
+        end
+    end,
 })
-
-module.enable = function(self)
-    -- worldbuff.enabled is the user-facing master switch: if it is off,
-    -- nothing below runs even though the framework enabled the module.
-    if not get_config("worldbuff.enabled") then return end
-    for _, event in ipairs(EVENTS) do
-        event_frame:RegisterEvent(event)
-    end
-    ticker_frame:Show()
-    -- Fresh server-time retry budget on every enable
-    server_retry_elapsed = 0
-    server_retry_count = 0
-    server_retry_interval = SERVER_RETRY_INITIAL_INTERVAL
-    create_caution_frame()
-    create_hearthstone_button()
-    create_timer_frame()
-    join_twb_channel()
-    request_server_time()
-    update_timer_frame()
-end
-
--- fix #8: clean up on disable
-module.disable = function(self)
-    -- Drop the config cache so a later re-enable re-reads OZAIO_CONFIG
-    for k in pairs(config_cache) do
-        config_cache[k] = nil
-    end
-    logout_at = nil
-    hearthstone_hide_time = nil
-    countdown_active = false
-    invalidate_hearthstone()
-    pending_twb_kill = nil
-    ticker_frame:Hide()
-    event_frame:UnregisterAllEvents()
-    if caution then
-        caution:Hide()
-    end
-    if hearthstone_button then
-        hearthstone_button:Hide()
-    end
-    if timer_frame then
-        timer_frame:Hide()
-    end
-end
-
-module.create_config_panel = function(self, parent)
-    local panel = CreateFrame("Frame", "OzWorldBuffConfig", parent)
-    panel:SetAllPoints()
-
-    local flow = OzUIHelper:createFlow(panel, 10)
-    OzUIHelper:attachResize(panel, flow)
-
-    local title = OzUIHelper:makeLabel(panel, L["World Buff"], "GameFontNormalLarge")
-    title:SetWidth(flow.maxWidth - flow.padding)
-    title:SetJustifyH("CENTER")
-    OzUIHelper:add(flow, title, flow.maxWidth - flow.padding, 20)
-    OzUIHelper:newLine(flow)
-
-    local items = {
-        { key = "worldbuff.enabled", label = L["Enable"],
-          -- Master switch: start/stop the whole module machinery (events,
-          -- ticker, TWB channel) instead of leaving it half-running.
-          onToggle = function()
-              if get_config("worldbuff.enabled") then
-                  module:enable()
-              else
-                  module:disable()
-              end
-          end },
-        { key = "worldbuff.countdown",   label = L["Countdown bar"] },
-        { key = "worldbuff.sound",       label = L["Sound alert"] },
-        { key = "worldbuff.hearthstone", label = L["Hearthstone button"] },
-        { key = "worldbuff.timer",       label = L["Timer frame"], onToggle = update_timer_frame },
-        { key = "worldbuff.guild",       label = L["Guild notify"] },
-        { key = "worldbuff.autoLogout",  label = L["Auto logout"] },
-    }
-
-    for _, item in ipairs(items) do
-        local key = item.key
-        local label = item.label
-        local value = get_config(key) or false
-        -- Lua 5.0: the for-loop variable (`item`) is nil inside closures after
-        -- the loop ends; capture per-iteration values in locals instead
-        local onToggle = item.onToggle
-        OzUIHelper:add(flow, OzUIHelper:makeCheckbox(
-            panel, label, value,
-            function(checked)
-                set_config(key, checked)
-                if onToggle then onToggle() end
-            end
-        ))
-        OzUIHelper:newLine(flow)
-    end
-
-    return { frame = panel, height = math.abs(flow.y) + flow.padding }
-end

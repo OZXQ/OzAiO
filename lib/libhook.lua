@@ -10,10 +10,18 @@
 --     postFn — runs after original. nil to skip.
 --   OzHook:unhook(target, fn)  — remove fn from pre or post list. restores original if empty.
 
-OzHook = {}
+local MAJOR = "OzHook-1.0"
+local MINOR = 1
+
+if OzHook and OzHook.version and OzHook.version >= MINOR then
+    return
+end
+
+OzHook = OzHook or {}
+OzHook.version = MINOR
+OzHook._registry = OzHook._registry or {}
 
 local _G = getfenv(0)
-local registry = {}
 
 local function isScriptTarget(obj, name)
     return type(obj) == "table"
@@ -117,8 +125,8 @@ end
 
 local function ensureHooked(obj, name)
     local k = regKey(obj, name)
-    if not registry[k] then registry[k] = {} end
-    local entry = registry[k][name]
+    if not OzHook._registry[k] then OzHook._registry[k] = {} end
+    local entry = OzHook._registry[k][name]
     if entry then return entry end
 
     local orig = getOrig(obj, name)
@@ -137,7 +145,7 @@ local function ensureHooked(obj, name)
     }
     entry.wrapper = createWrapper(entry)
     installHook(obj, name, entry.wrapper)
-    registry[k][name] = entry
+    OzHook._registry[k][name] = entry
     return entry
 end
 
@@ -176,7 +184,7 @@ function OzHook:unhook(obj, name, fn)
         obj = nil
     end
     local k = regKey(obj, name)
-    local entry = registry[k] and registry[k][name]
+    local entry = OzHook._registry[k] and OzHook._registry[k][name]
     if not entry then return end
 
     for i, f in ipairs(entry.pre) do
@@ -192,21 +200,21 @@ function OzHook:unhook(obj, name, fn)
 
     if not next(entry.pre) and not next(entry.post) then
         installHook(obj, name, entry.orig)
-        registry[k][name] = nil
-        if not next(registry[k]) then
-            registry[k] = nil
+        OzHook._registry[k][name] = nil
+        if not next(OzHook._registry[k]) then
+            OzHook._registry[k] = nil
         end
     end
 end
 
 -- Restore all originals and clear the registry.
 function OzHook:unhookAll()
-    for _, methods in pairs(registry) do
+    for _, methods in pairs(OzHook._registry) do
         for _, entry in pairs(methods) do
             installHook(entry.owner, entry.name, entry.orig)
         end
     end
-    registry = {}
+    OzHook._registry = {}
 end
 
 -- Check if a target is hooked, or if a specific fn is registered.
@@ -221,7 +229,7 @@ function OzHook:isHooked(obj, name, fn)
         obj = nil
     end
     local k = regKey(obj, name)
-    local entry = registry[k] and registry[k][name]
+    local entry = OzHook._registry[k] and OzHook._registry[k][name]
     if not entry then return false end
     if not fn then return true end
     return hasFn(entry.pre, fn) or hasFn(entry.post, fn)

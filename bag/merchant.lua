@@ -3,9 +3,6 @@ local L = setmetatable({}, {
     __index = function(t, k)
         local v = tostring(k)
         rawset(t, k, v)
-        if (LOCALE ~= "enUS") and (LOCALE ~= "enGB") then
-            OzLib.print("Locale fetch failed for general" .. v, "error")
-        end
         return v
     end
 })
@@ -30,32 +27,16 @@ if LOCALE == "zhCN" then
     L["nothing to buy"] = "无需购买任何物品"
     L["Item not found"] = "未找到物品"
     L["Item ID / Link"] = "物品ID/链接"
+    L["Automatically sells grey items when visiting a merchant."] = "访问商人时自动出售所有灰色(垃圾)品质物品。"
+    L["Automatically sells custom blacklisted items when visiting a merchant."] = "访问商人时自动出售自定义列表中的物品。"
+    L["Automatically restocks reagents/items up to configured quantities."] = "访问商人时自动补齐指定物品至目标数量。"
 end
 
-local module = OzFramework:register("oz_bag", {
-    title = L["Bag/Vendor"],
-    order = 1,
-    enabled = true,
-    config = {
-        ["bag.sell_junk"] = 1,
-        ["bag.auto_buy"] = 0,
-        ["bag.auto_buy_list"] = {},
-        ["bag.auto_sell"] = 0,
-        ["bag.auto_sell_list"] = {},
-    }
-})
-OZAIO_CONFIG = OZAIO_CONFIG or {}
--- Migrate missing config keys from module defaults
-for k, v in pairs(module.config) do
-    if OZAIO_CONFIG[k] == nil then
-        if type(v) == "table" then
-            OZAIO_CONFIG[k] = {} -- fresh table, not a shared reference
-        else
-            OZAIO_CONFIG[k] = v
-        end
-    end
+local function is_enabled(val)
+    return val == true or val == 1
 end
-local ozBag ={
+
+local ozBag = {
     event_frame = nil,
     money = 0,
     next_tick = 0,
@@ -93,8 +74,9 @@ function ozBag:collect_grey_items()
             local texture, itemCount, locked = GetContainerItemInfo(bag, slot)
             if texture and not locked then
                 local link = GetContainerItemLink(bag, slot)
-                if link and string.find(link, "ff9d9d9d", 1, true) then
-                    table.insert(grey_items, {bag = bag, slot = slot})
+                if link and string.find(string.lower(link), "ff9d9d9d", 1, true) then
+                    local id = self:GetItemIDFromLink(link)
+                    table.insert(grey_items, {bag = bag, slot = slot, id = id})
                 end
             end
         end
@@ -112,8 +94,11 @@ function ozBag:countItemInBags(itemID)
 end
 
 function ozBag:hasSpaceForItem(itemID)
-    -- Only an empty slot, or a partially filled stack of THIS item, counts
-    -- as space. Previously any occupied slot returned true immediately.
+    -- Only an empty slot, or a partially filled stack of THIS item, counts as space.
+    local _, _, _, _, _, _, stackCount = GetItemInfo(itemID)
+    local maxStack = tonumber(stackCount) or 20
+    if maxStack <= 0 then maxStack = 20 end
+
     for bag = 0, NUM_BAG_SLOTS do
         local slots = GetContainerNumSlots(bag)
         for slot = 1, slots do
@@ -123,9 +108,7 @@ function ozBag:hasSpaceForItem(itemID)
             end
             if self:GetItemIDFromLink(link) == itemID then
                 local _, itemCount = GetContainerItemInfo(bag, slot)
-                -- Vanilla 1.12 GetItemInfo doesn't return stackCount at pos 8;
-                -- use 20 as safe default since most trade goods stack to 20.
-                if (itemCount or 0) < 20 then
+                if (itemCount or 0) < maxStack then
                     return true
                 end
             end
@@ -172,7 +155,14 @@ local function on_merchant_tick()
     -- Priority 1: Sell queued items (grey + auto-sell list)
     if ozBag.sell_queue and table.getn(ozBag.sell_queue) > 0 then
         local item = table.remove(ozBag.sell_queue, 1)
-        UseContainerItem(item.bag, item.slot)
+        local texture, _, locked = GetContainerItemInfo(item.bag, item.slot)
+        if texture and not locked then
+            local currentLink = GetContainerItemLink(item.bag, item.slot)
+            local currentID = ozBag:GetItemIDFromLink(currentLink)
+            if currentID and (item.id == nil or currentID == item.id) then
+                UseContainerItem(item.bag, item.slot)
+            end
+        end
         if table.getn(ozBag.sell_queue) == 0 then
             ozBag.sell_queue = nil
         end
@@ -250,7 +240,7 @@ function ozBag:action_onshow()
     self:buildInventoryCache()
 
     -- Collect grey items (sell_junk)
-    if OZAIO_CONFIG["bag.sell_junk"] == 1 then
+    if is_enabled(OZAIO_CONFIG["bag.sell_junk"]) then
         local grey = self:collect_grey_items()
         for _, item in ipairs(grey) do
             table.insert(self.sell_queue, item)
@@ -258,7 +248,7 @@ function ozBag:action_onshow()
     end
 
     -- Collect auto-sell list items (deduped against grey items already queued)
-    if OZAIO_CONFIG["bag.auto_sell"] == 1 then
+    if is_enabled(OZAIO_CONFIG["bag.auto_sell"]) then
         local sellList = OZAIO_CONFIG["bag.auto_sell_list"] or {}
         local queued = {}
         -- Mark grey items already in queue
@@ -275,7 +265,7 @@ function ozBag:action_onshow()
                         if link then
                             local id = ozBag:GetItemIDFromLink(link)
                             if id and sellList[id] then
-                                table.insert(self.sell_queue, {bag = bag, slot = slot})
+                                table.insert(self.sell_queue, {bag = bag, slot = slot, id = id})
                                 queued[key] = true
                             end
                         end
@@ -286,7 +276,7 @@ function ozBag:action_onshow()
     end
 
     -- Build buy queue (auto_buy)
-    if OZAIO_CONFIG["bag.auto_buy"] == 1 then
+    if is_enabled(OZAIO_CONFIG["bag.auto_buy"]) then
         local buyList = OZAIO_CONFIG["bag.auto_buy_list"] or {}
         local numItems = GetMerchantNumItems()
 
@@ -391,22 +381,22 @@ function ozBag:action_onclose()
                     .. " (" .. L["spend "] .. costStr .. ")|r")
             end
         end
+    end
 
-        local m = GetMoney() - self.money
-        if m ~= 0 then
-            local win, _, _, _, moneyStr = OzLib:convertMoney(m)
-            local wl = win and L["gain "] or L["spend "]
-            DEFAULT_CHAT_FRAME:AddMessage("|cff20b2aa[OzAiO] " .. wl .. moneyStr .. "|r")
-        end
+    local m = GetMoney() - self.money
+    if m ~= 0 then
+        local win, _, _, _, moneyStr = OzLib:convertMoney(m)
+        local wl = win and L["gain "] or L["spend "]
+        DEFAULT_CHAT_FRAME:AddMessage("|cff20b2aa[OzAiO] " .. wl .. moneyStr .. "|r")
     end
 end
 
 -- ================== Toggle ==================
 
 function ozBag:updateToggle()
-    local sellOn = OZAIO_CONFIG["bag.sell_junk"] == 1
-    local autoSellOn = OZAIO_CONFIG["bag.auto_sell"] == 1
-    local autoBuyOn = OZAIO_CONFIG["bag.auto_buy"] == 1
+    local sellOn = is_enabled(OZAIO_CONFIG["bag.sell_junk"])
+    local autoSellOn = is_enabled(OZAIO_CONFIG["bag.auto_sell"])
+    local autoBuyOn = is_enabled(OZAIO_CONFIG["bag.auto_buy"])
     local shouldRun = sellOn or autoSellOn or autoBuyOn
 
     if not self.event_frame then
@@ -443,119 +433,83 @@ function ozBag:updateToggle()
     end
 end
 
-module.enable = function(self)
-    ozBag:updateToggle()
+-- ==================== Item Resolution Helpers ====================
+
+local function resolveItemInput(text)
+    if not text or text == "" then return nil end
+    -- Try item link: |cff9d9d9d|Hitem:12345:...|h[Name]|h|r
+    local _, _, linkID = string.find(text, "|Hitem:(%d+)")
+    if linkID then
+        local id = tonumber(linkID)
+        local name = GetItemInfo(id)
+        return id, name or ("[" .. tostring(id) .. "]")
+    end
+    -- Try numeric ID
+    local id = tonumber(text)
+    if id then
+        local name = GetItemInfo(id)
+        if name then
+            return id, name
+        else
+            return id, "[" .. tostring(id) .. "]"
+        end
+    end
+    -- Try name search in bags
+    local textLower = string.lower(text)
+    for bag = 0, NUM_BAG_SLOTS do
+        for slot = 1, GetContainerNumSlots(bag) do
+            local link = GetContainerItemLink(bag, slot)
+            if link then
+                local _, _, itemName = string.find(link, "%[([^%]]+)%]")
+                if itemName and string.find(string.lower(itemName), textLower, 1, true) then
+                    local foundID = ozBag:GetItemIDFromLink(link)
+                    if foundID then
+                        return foundID, itemName
+                    end
+                end
+            end
+        end
+    end
+    -- Try name search at current merchant (item may not be in bags yet)
+    local numMerchantItems = GetMerchantNumItems()
+    if numMerchantItems and numMerchantItems > 0 then
+        for i = 1, numMerchantItems do
+            local link = GetMerchantItemLink(i)
+            if link then
+                local _, _, itemName = string.find(link, "%[([^%]]+)%]")
+                if itemName and string.find(string.lower(itemName), textLower, 1, true) then
+                    local foundID = ozBag:GetItemIDFromLink(link)
+                    if foundID then
+                        return foundID, itemName
+                    end
+                end
+            end
+        end
+    end
+    return nil
 end
 
-module.create_config_panel = function(self, parent)
-    local panel = CreateFrame("Frame", "OzBagConfig", parent)
-    -- Anchor top edges to parent so panel is properly positioned;
-    -- no bottom anchor so height can grow beyond viewport for scrolling.
-    panel:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
-    panel:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, 0)
-
-    local flow = OzUIHelper:createFlow(panel, 10)
-
-    -- Title
-    local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-    title:SetText(L["Bag/Vendor"])
-    title:SetWidth(flow.maxWidth - flow.padding)
-    title:SetJustifyH("CENTER")
-    OzUIHelper:add(flow, title, flow.maxWidth - flow.padding, 20)
-    OzUIHelper:newLine(flow)
-
-    -- Auto Sell Junk checkbox
-    local sellJunkCb = OzUIHelper:makeCheckbox(panel, L["Auto Sell Junk"], OZAIO_CONFIG["bag.sell_junk"], function(checked)
-        OZAIO_CONFIG["bag.sell_junk"] = checked
-        ozBag:updateToggle()
-    end)
-    OzUIHelper:add(flow, sellJunkCb)
-    OzUIHelper:newLine(flow)
-
-    -- Auto Sell Items checkbox
-    local autoSellCb = OzUIHelper:makeCheckbox(panel, L["Auto Sell Items"], OZAIO_CONFIG["bag.auto_sell"], function(checked)
-        OZAIO_CONFIG["bag.auto_sell"] = checked
-        ozBag:updateToggle()
-    end)
-    OzUIHelper:add(flow, autoSellCb)
-    OzUIHelper:newLine(flow)
-
-    -- ==================== Item Resolution Helper ====================
-    local function resolveItemInput(text)
-        if not text or text == "" then return nil end
-        -- Try item link: |cff9d9d9d|Hitem:12345:...|h[Name]|h|r
-        local _, _, linkID = string.find(text, "|Hitem:(%d+)")
-        if linkID then
-            local id = tonumber(linkID)
-            local name = GetItemInfo(id)
-            return id, name or ("[" .. tostring(id) .. "]")
-        end
-        -- Try numeric ID
-        local id = tonumber(text)
-        if id then
-            local name = GetItemInfo(id)
-            if name then
-                return id, name
-            else
-                return id, "[" .. tostring(id) .. "]"
-            end
-        end
-        -- Try name search in bags
-        local textLower = string.lower(text)
-        for bag = 0, NUM_BAG_SLOTS do
-            for slot = 1, GetContainerNumSlots(bag) do
-                local link = GetContainerItemLink(bag, slot)
-                if link then
-                    local _, _, itemName = string.find(link, "%[([^%]]+)%]")
-                    if itemName and string.find(string.lower(itemName), textLower, 1, true) then
-                        local foundID = ozBag:GetItemIDFromLink(link)
-                        if foundID then
-                            return foundID, itemName
-                        end
-                    end
-                end
-            end
-        end
-        -- Try name search at the current merchant (item may not be in bags yet)
-        local numMerchantItems = GetMerchantNumItems()
-        if numMerchantItems and numMerchantItems > 0 then
-            for i = 1, numMerchantItems do
-                local link = GetMerchantItemLink(i)
-                if link then
-                    local _, _, itemName = string.find(link, "%[([^%]]+)%]")
-                    if itemName and string.find(string.lower(itemName), textLower, 1, true) then
-                        local foundID = ozBag:GetItemIDFromLink(link)
-                        if foundID then
-                            return foundID, itemName
-                        end
-                    end
-                end
-            end
-        end
-        return nil
+local function itemDisplayName(id)
+    local itemID = tonumber(id)
+    if not itemID then
+        itemID = ozBag:GetItemIDFromLink(id)
     end
-
-    -- Returns "ItemName [itemID]", colored by item quality
-    local function itemDisplayName(id)
-        local itemID = tonumber(id)
-        if not itemID then
-            itemID = ozBag:GetItemIDFromLink(id)
-        end
-        if itemID then
-            local name = GetItemInfo(itemID)
-            return (name or ("[" .. tostring(itemID) .. "]")) .. " [" .. tostring(itemID) .. "]"
-        else
-            return tostring(id)
-        end
+    if itemID then
+        local name = GetItemInfo(itemID)
+        return (name or ("[" .. tostring(itemID) .. "]")) .. " [" .. tostring(itemID) .. "]"
+    else
+        return tostring(id)
     end
+end
 
-    -- ==================== Auto Sell List Section ====================
-    OzUIHelper:add(flow, OzUIHelper:makeSeparator(panel, 300))
-    OzUIHelper:newLine(flow)
+-- ==================== Declarative Config UI ====================
 
-    -- Sell list widget
-    local sellList = OzUIHelper:makeScrollItemList(panel, {
-        width = 300, height = 100,
+local function build_bag_config_ui(panel)
+    local parent = panel.scrollChild
+
+    -- Shared widgets for sell section
+    local sellList = OzUIHelper:createScrollItemList(parent, {
+        height = 70,
         showQuantity = false,
         emptyText = L["No items added"],
         totalPrefix = L["Total items"] .. ": ",
@@ -566,22 +520,9 @@ module.create_config_panel = function(self, parent)
         end,
     })
 
-    -- Sell section header + total on same line
-    local sellHeaderLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    sellHeaderLabel:SetText(L["Sell List"] .. ":")
-    OzUIHelper:add(flow, sellHeaderLabel, sellHeaderLabel:GetStringWidth(), 20)
-    OzUIHelper:add(flow, sellList.totalLabel, 150, 20)
-    OzUIHelper:newLine(flow)
+    local sellEdit = OzUIHelper:createEditBox(parent, 120, 20)
 
-    -- Sell input row
-    local sellHint = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    sellHint:SetText(L["Item ID / Link"] .. ":")
-    OzUIHelper:add(flow, sellHint, sellHint:GetStringWidth(), 22)
-
-    local sellEdit = OzUIHelper:makeEditBox(panel, 100, 22)
-    OzUIHelper:add(flow, sellEdit)
-
-    local sellAddBtn = OzUIHelper:makeButton(panel, "+", function()
+    local function add_sell_item()
         local text = sellEdit:GetText()
         if not text or text == "" then return end
         local itemID, itemName = resolveItemInput(text)
@@ -599,10 +540,9 @@ module.create_config_panel = function(self, parent)
         OZAIO_CONFIG["bag.auto_sell_list"][itemID] = true
         sellEdit:SetText("")
         sellList:refresh()
-    end, 20, 22)
-    OzUIHelper:add(flow, sellAddBtn)
+    end
 
-    local sellDelBtn = OzUIHelper:makeButton(panel, "-", function()
+    local function del_sell_item()
         local text = sellEdit:GetText()
         if not text or text == "" then return end
         local itemID = resolveItemInput(text)
@@ -617,31 +557,16 @@ module.create_config_panel = function(self, parent)
         else
             OzLib.print(L["Item not in list"] .. ": " .. tostring(itemID), "error")
         end
-    end, 20, 22)
-    OzUIHelper:add(flow, sellDelBtn)
-    OzUIHelper:newLine(flow)
+    end
 
-    OzUIHelper:add(flow, sellList.scrollFrame, 300, 100)
-    OzUIHelper:newLine(flow)
-
-    -- Initial render
-    sellList:refresh()
-
-    -- ==================== Auto Buy Items Checkbox ====================
-    local autoBuyCb = OzUIHelper:makeCheckbox(panel, L["Auto Buy Items"], OZAIO_CONFIG["bag.auto_buy"], function(checked)
-        OZAIO_CONFIG["bag.auto_buy"] = checked
-        ozBag:updateToggle()
+    sellEdit:SetScript("OnEnterPressed", function()
+        add_sell_item()
+        this:ClearFocus()
     end)
-    OzUIHelper:add(flow, autoBuyCb)
-    OzUIHelper:newLine(flow)
 
-    -- ==================== Auto Buy List Section ====================
-    OzUIHelper:add(flow, OzUIHelper:makeSeparator(panel, 300))
-    OzUIHelper:newLine(flow)
-
-    -- Buy list widget
-    local buyList = OzUIHelper:makeScrollItemList(panel, {
-        width = 300, height = 100,
+    -- Shared widgets for buy section
+    local buyList = OzUIHelper:createScrollItemList(parent, {
+        height = 70,
         showQuantity = true,
         emptyText = L["No items added"],
         totalPrefix = L["Total items"] .. ": ",
@@ -652,30 +577,11 @@ module.create_config_panel = function(self, parent)
         end,
     })
 
-    -- Buy section header + total on same line
-    local buyHeaderLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    buyHeaderLabel:SetText(L["Buy List"] .. ":")
-    OzUIHelper:add(flow, buyHeaderLabel, buyHeaderLabel:GetStringWidth(), 20)
-    OzUIHelper:add(flow, buyList.totalLabel, 150, 20)
-    OzUIHelper:newLine(flow)
-
-    -- Buy input row
-    local buyHint = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    buyHint:SetText(L["Item ID / Link"] .. ":")
-    OzUIHelper:add(flow, buyHint, buyHint:GetStringWidth(), 22)
-
-    local buyEdit = OzUIHelper:makeEditBox(panel, 100, 22)
-    OzUIHelper:add(flow, buyEdit)
-
-    local buyQtyEdit = OzUIHelper:makeEditBox(panel, 35, 22)
+    local buyEdit = OzUIHelper:createEditBox(parent, 120, 20)
+    local buyQtyEdit = OzUIHelper:createEditBox(parent, 36, 20)
     buyQtyEdit:SetText("1")
-    OzUIHelper:add(flow, buyQtyEdit)
 
-    local buyQtyHint = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    buyQtyHint:SetText("Qty:")
-    OzUIHelper:add(flow, buyQtyHint, buyQtyHint:GetStringWidth(), 22)
-
-    local buyAddBtn = OzUIHelper:makeButton(panel, "+", function()
+    local function add_buy_item()
         local text = buyEdit:GetText()
         if not text or text == "" then return end
         local itemID, itemName = resolveItemInput(text)
@@ -696,10 +602,9 @@ module.create_config_panel = function(self, parent)
         buyEdit:SetText("")
         buyQtyEdit:SetText("1")
         buyList:refresh()
-    end, 20, 22)
-    OzUIHelper:add(flow, buyAddBtn)
+    end
 
-    local buyDelBtn = OzUIHelper:makeButton(panel, "-", function()
+    local function del_buy_item()
         local text = buyEdit:GetText()
         if not text or text == "" then return end
         local itemID = resolveItemInput(text)
@@ -714,19 +619,126 @@ module.create_config_panel = function(self, parent)
         else
             OzLib.print(L["Item not in list"] .. ": " .. tostring(itemID), "error")
         end
-    end, 20, 22)
-    OzUIHelper:add(flow, buyDelBtn)
-    OzUIHelper:newLine(flow)
+    end
 
-    OzUIHelper:add(flow, buyList.scrollFrame, 300, 100)
-    OzUIHelper:newLine(flow)
+    buyEdit:SetScript("OnEnterPressed", function()
+        add_buy_item()
+        this:ClearFocus()
+    end)
+    buyQtyEdit:SetScript("OnEnterPressed", function()
+        add_buy_item()
+        this:ClearFocus()
+    end)
 
-    -- Initial render
-    buyList:refresh()
-
-    -- Set content height so framework can enable scrolling if needed
-    local panelHeight = math.abs(flow.y) + flow.padding
-    panel:SetHeight(panelHeight)
-
-    return { frame = panel, height = panelHeight }
+    return {
+        {
+            type = "checkbox",
+            label = L["Auto Sell Junk"],
+            tooltip = L["Automatically sells grey items when visiting a merchant."],
+            config_key = "bag.sell_junk",
+            onChange = function(checked)
+                ozBag:updateToggle()
+            end,
+        },
+        {
+            type = "checkbox",
+            label = L["Auto Sell Items"],
+            tooltip = L["Automatically sells custom blacklisted items when visiting a merchant."],
+            config_key = "bag.auto_sell",
+            onChange = function(checked)
+                ozBag:updateToggle()
+            end,
+        },
+        { type = "separator" },
+        {
+            type = "row",
+            items = {
+                { type = "label", label = L["Sell List"] .. ":", font = "GameFontNormalSmall" },
+                { type = "custom", create = function() return sellList.totalLabel end },
+            },
+        },
+        {
+            type = "row",
+            items = {
+                { type = "label", label = L["Item ID / Link"] .. ":", font = "GameFontNormalSmall" },
+                { type = "custom", create = function() return sellEdit end },
+                { type = "button", label = "+", width = 20, height = 20, func = add_sell_item },
+                { type = "button", label = "-", width = 20, height = 20, func = del_sell_item },
+            },
+        },
+        {
+            type = "custom",
+            height = 70,
+            fullWidth = true,
+            create = function()
+                sellList:refresh()
+                return sellList.scrollFrame
+            end,
+        },
+        { type = "space", height = 4 },
+        {
+            type = "checkbox",
+            label = L["Auto Buy Items"],
+            tooltip = L["Automatically restocks reagents/items up to configured quantities."],
+            config_key = "bag.auto_buy",
+            onChange = function(checked)
+                ozBag:updateToggle()
+            end,
+        },
+        { type = "separator" },
+        {
+            type = "row",
+            items = {
+                { type = "label", label = L["Buy List"] .. ":", font = "GameFontNormalSmall" },
+                { type = "custom", create = function() return buyList.totalLabel end },
+            },
+        },
+        {
+            type = "row",
+            items = {
+                { type = "label", label = L["Item ID / Link"] .. ":", font = "GameFontNormalSmall" },
+                { type = "custom", create = function() return buyEdit end },
+                { type = "label", label = "Qty:", font = "GameFontNormalSmall" },
+                { type = "custom", create = function() return buyQtyEdit end },
+                { type = "button", label = "+", width = 20, height = 20, func = add_buy_item },
+                { type = "button", label = "-", width = 20, height = 20, func = del_buy_item },
+            },
+        },
+        {
+            type = "custom",
+            height = 70,
+            fullWidth = true,
+            create = function()
+                buyList:refresh()
+                return buyList.scrollFrame
+            end,
+        },
+    }
 end
+
+-- ==================== Module Registration ====================
+
+local module = OzFramework:registerMod({
+    name = "oz_bag",
+    title = L["Bag/Vendor"],
+    category = "Bag",
+    order = 1,
+    enabled = true,
+    config = {
+        ["bag.sell_junk"] = true,
+        ["bag.auto_sell"] = false,
+        ["bag.auto_sell_list"] = {},
+        ["bag.auto_buy"] = false,
+        ["bag.auto_buy_list"] = {},
+    },
+    config_ui_creator = build_bag_config_ui,
+    enable = function(self)
+        ozBag:updateToggle()
+    end,
+    disable = function(self)
+        if ozBag.event_frame then
+            ozBag.event_frame:UnregisterAllEvents()
+        end
+        ozBag:clearQueue()
+    end,
+})
