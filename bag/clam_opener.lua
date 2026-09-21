@@ -230,8 +230,17 @@ end
 
 -- ==================== Module Registration ====================
 
-local function build_clam_config_ui()
-    return {
+module = OzFramework:registerMod({
+    name = "oz_clam_opener",
+    title = L["Auto Clam Opener"],
+    category = "Bag",
+    order = 2,
+    enabled = true,
+    config = {
+        ["bag.clam_opener_enable"] = true,
+        ["bag.auto_open_clams"] = true,
+    },
+    config_ui_creator = {
         {
             type = "checkbox",
             label = L["Auto Clam Opener"],
@@ -260,22 +269,9 @@ local function build_clam_config_ui()
                 OzClamOpener:Open(false)
             end,
             width = 120,
-            height = 20,
+            height = 24,
         },
-    }
-end
-
-module = OzFramework:registerMod({
-    name = "oz_clam_opener",
-    title = L["Auto Clam Opener"],
-    category = "Bag",
-    order = 2,
-    enabled = true,
-    config = {
-        ["bag.clam_opener_enable"] = true,
-        ["bag.auto_open_clams"] = true,
     },
-    config_ui_creator = build_clam_config_ui,
     enable = function(self)
         if OZAIO_CONFIG and OZAIO_CONFIG["bag.clam_opener_enable"] == false then return end
         event_frame:RegisterEvent("LOOT_OPENED")
