@@ -1,0 +1,23 @@
+## Interface: 11200
+## Title: Oz Toolbox
+## Title-zhCN: Oz工具箱
+## Author: Oz
+## Version: 1.0
+## SavedVariablesPerCharacter: OZAIO, OZAIO_CONFIG, OZAIO_WB_HISTORY
+
+lib\configuihelper.lua
+lib\lib.lua
+lib\libhook.lua
+core\framework.lua
+## external api could be used by other addons
+core\ozapi.lua
+
+
+modules\general.lua
+modules\chat.lua
+modules\minimap.lua
+modules\superwow.lua
+modules\worldbuff.lua
+modules\bag.lua
+modules\spell.lua
+modules\quest.lua
