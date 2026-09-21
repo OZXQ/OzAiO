@@ -50,6 +50,7 @@ local CATEGORY_LIST = {
     "Actionbar",
     "Buff",
     "Bag",
+    "Loot",
 }
 
 local CATEGORY_NORMALIZE = {
@@ -60,6 +61,7 @@ local CATEGORY_NORMALIZE = {
     ["actionbar"] = "Actionbar",
     ["buff"]      = "Buff",
     ["bag"]       = "Bag",
+    ["loot"]      = "Loot",
 }
 
 -- ==================== Localization ====================
@@ -89,6 +91,7 @@ if LOCALE == "zhCN" then
     L["Actionbar"] = "动作条"
     L["Buff"] = "增益效果"
     L["Bag"] = "背包"
+    L["Loot"] = "拾取"
     L["No modules registered in this category."] = "该分类下暂无已注册模块。"
     L["(Click to collapse)"] = "(点击折叠)"
     L["(Click to expand)"] = "(点击展开)"

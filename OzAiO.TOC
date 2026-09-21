@@ -24,6 +24,7 @@ general\worldbuff.lua
 bag\merchant.lua
 bag\clam_opener.lua
 bag\unlock.lua
+loot\auto_roll.lua
 spell\update_spell_lvl.lua
 spell\spellbook_mark.lua
 quest\auto_accept_sharing.lua

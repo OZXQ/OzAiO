@@ -47,7 +47,8 @@ Unlike monolithic UI replacements (such as pfUI) that enforce complete visual ov
 |              lib/                  |              modules/            |
 |  - configuihelper.lua (Panel/Theme)|  - general.lua    (QoL/Stance)   |
 |  - libhook.lua        (OzHook)     |  - bag/*          (Vendor Auto)  |
-|  - lib.lua            (OzLib)      |  - spell/*        (ActionBar)    |
+|  - lib.lua            (OzLib)      |  - loot/*         (Auto-Roll)    |
+|                                    |  - spell/*        (ActionBar)    |
 |                                    |  - chat/*         (Channel/HC)   |
 |                                    |  - minimap/*      (Clutter)      |
 |                                    |  - superwow.lua   (SuperAPI)     |
@@ -58,7 +59,7 @@ Unlike monolithic UI replacements (such as pfUI) that enforce complete visual ov
 
 #### 3.1 Module Registry & Framework Architecture (`core/framework.lua`)
 - **Fixed Category Navigation:**
-  The configuration UI organizes all features into **7 standardized categories** on the left panel:
+  The configuration UI organizes all features into **8 standardized categories** on the left panel:
   1. `General` (通用)
   2. `Chat` (聊天)
   3. `Minimap` (小地图)
@@ -66,12 +67,13 @@ Unlike monolithic UI replacements (such as pfUI) that enforce complete visual ov
   5. `Actionbar` (动作条)
   6. `Buff` (增益 / 世界BUFF)
   7. `Bag` (背包 / 商人)
+  8. `Loot` (拾取 / 战利品)
   Selecting a category activates its scrollable container, rendering all features registered under that category.
 
 - **Declarative Mod Registration Contract (`registerMod`):**
   Modules register via `OzFramework:registerMod({ name, category, order, config_ui_creator, enable, disable })`:
   - `name`: Unique identifier string.
-  - `category`: Target category matching one of the 7 fixed categories.
+  - `category`: Target category matching one of the 8 fixed categories.
   - `order`: Integer for vertical placement priority within the category view.
   - `config_ui_creator`: Function returning (or direct table of) an Automaton-style declarative options schema.
   - `enable()` / `disable()`: Pure lifecycle callbacks for registering/unregistering events and hooks.
@@ -196,7 +198,35 @@ Unlike monolithic UI replacements (such as pfUI) that enforce complete visual ov
 
 ---
 
-#### 4.3 Spell & Action Bar Modules (`spell/update_spell_lvl.lua`, `spell/spellbook_mark.lua`)
+#### 4.3 Loot Management Module (`loot/auto_roll.lua` - `oz_auto_roll`)
+**Primary Objective:** Automated loot rolling on raid and dungeon reputation tokens (Zul'Gurub and Caverns of Time / Black Morass) and seamless Bind-on-Pickup confirmation handling.
+
+| Feature ID | Feature Name | Description | Configuration Key |
+| :--- | :--- | :--- | :--- |
+| **LOT-01** | Auto Roll Master Toggle | Master switch to activate automatic roll processing on group/raid loot drops (`START_LOOT_ROLL`). When disabled, the standard Blizzard roll UI is completely unhindered. | `loot.auto_roll_enable` |
+| **LOT-02** | ZG Bijous Auto Roll | Automatically rolls on all 9 Zul'Gurub Hakkari Bijous. Configurable actions: `Need`, `Greed`, `Pass`, or `Manual` (ignore/prompt). | `loot.zg_bijous_action` |
+| **LOT-03** | ZG Coins Auto Roll | Automatically rolls on all 9 Zul'Gurub Coins. Configurable actions: `Need`, `Greed`, `Pass`, or `Manual` (ignore/prompt). | `loot.zg_coins_action` |
+| **LOT-04** | CoT Corrupted Sand Auto Roll | Automatically rolls on Caverns of Time reputation item: **Corrupted Sand** (腐蚀之沙, ID: `50203`). Configurable actions: `Need`, `Greed`, `Pass`, or `Manual` (ignore/prompt). | `loot.cot_items_action` |
+| **LOT-05** | BoP Popup Auto-Confirm | Automatically confirms the `CONFIRM_LOOT_ROLL` modal dialog for items processed by the auto-roll system, eliminating blocking confirmation prompts. | `loot.auto_confirm_bop` |
+
+##### 4.3.1 Auto Roll Detailed Technical Specifications (`loot/auto_roll.lua`)
+- **Event Pipeline:**
+  1. `START_LOOT_ROLL (rollID, rollTime)`: Retrieves `GetLootRollItemLink(rollID)` and parses numeric item ID via `|Hitem:(%d+)`.
+  2. Matches item against configured groups:
+     - **ZG Bijous (哈卡莱宝石, IDs 19707–19715):** Red (19707), Blue (19708), Yellow (19709), Orange (19710), Green (19711), Purple (19712), Bronze (19713), Silver (19714), Gold (19715).
+     - **ZG Coins (祖尔格拉布硬币, IDs 19698–19706):** Zulian (19698), Razzashi (19699), Hakkari (19700), Gurubashi (19701), Vilebranch (19702), Witherbark (19703), Sandfury (19704), Skullsplitter (19705), Bloodscalp (19706).
+     - **CoT Rep Item (时光之穴):** Specifically **Corrupted Sand** (腐蚀之沙, ID `50203`).
+  3. Action Resolution:
+     - `"need"`: Calls `RollOnLoot(rollID, 1)`. If `canNeed == 0` (cannot Need), gracefully falls back to Greed (`2`) or Pass (`0`).
+     - `"greed"`: Calls `RollOnLoot(rollID, 2)`.
+     - `"pass"`: Calls `RollOnLoot(rollID, 0)`.
+     - `"manual"`: No action taken; standard Blizzard roll frame remains visible.
+  4. Auto-Confirm: Tracks active `rollID` in a session table. When `CONFIRM_LOOT_ROLL` triggers for an auto-rolled item and `loot.auto_confirm_bop` is enabled, calls `ConfirmLootRoll(rollID, rollType)` immediately and suppresses the `CONFIRM_LOOT_ROLL` static popup.
+  5. Audit Output: Prints a clean colored notification to chat when `loot.announce_roll` is enabled (e.g. `[OzAiO] Auto-Rolled Need on [Corrupted Sand]`).
+
+---
+
+#### 4.4 Spell & Action Bar Modules (`spell/update_spell_lvl.lua`, `spell/spellbook_mark.lua`)
 **Primary Objective:** Eliminate manual action bar maintenance when training new abilities and assist in spellbook navigation.
 
 | Feature ID | Feature Name | Description | Configuration Key |
@@ -208,7 +238,7 @@ Unlike monolithic UI replacements (such as pfUI) that enforce complete visual ov
 
 ---
 
-#### 4.4 Chat Enhancements Module (`chat/*` - `oz_chat`)
+#### 4.5 Chat Enhancements Module (`chat/*` - `oz_chat`)
 **Primary Objective:** Enhance readability, reduce clutter, and organize specialized server chat channels.
 
 | Feature ID | Feature Name | Description | Configuration Key |
@@ -219,7 +249,7 @@ Unlike monolithic UI replacements (such as pfUI) that enforce complete visual ov
 
 ---
 
-#### 4.5 Minimap Management Module (`minimap/hide_sys_button.lua` - `oz_minimap`)
+#### 4.6 Minimap Management Module (`minimap/hide_sys_button.lua` - `oz_minimap`)
 **Primary Objective:** Clear visual clutter from the minimap circumference.
 
 | Feature ID | Feature Name | Description | Configuration Key |
@@ -229,7 +259,7 @@ Unlike monolithic UI replacements (such as pfUI) that enforce complete visual ov
 
 ---
 
-#### 4.6 SuperWoW Enhancements Module (`general/superwow.lua` - `oz_superwow`)
+#### 4.7 SuperWoW Enhancements Module (`general/superwow.lua` - `oz_superwow`)
 **Primary Objective:** Surface native SuperWoW client enhancements, CVars, and SuperAPI features directly into the addon interface.
 
 | Feature ID | Feature Name | Description | Configuration Key |
@@ -243,7 +273,7 @@ Unlike monolithic UI replacements (such as pfUI) that enforce complete visual ov
 
 ---
 
-#### 4.7 World Buff Tracker & Relay Module (`general/worldbuff.lua` - `oz_worldbuff`)
+#### 4.8 World Buff Tracker & Relay Module (`general/worldbuff.lua` - `oz_worldbuff`)
 **Primary Objective:** Automated detection, cross-client synchronization, visual/audio alerts, and safety utilities for world buffs (Onyxia & Nefarian).
 
 | Feature ID | Feature Name | Description | Configuration Key |
@@ -262,7 +292,7 @@ Unlike monolithic UI replacements (such as pfUI) that enforce complete visual ov
 
 ---
 
-#### 4.8 Quest Automation Module (`quest/auto_accept_sharing.lua` - `oz_quest`)
+#### 4.9 Quest Automation Module (`quest/auto_accept_sharing.lua` - `oz_quest`)
 **Primary Objective:** Zero-click acceptance of group-shared quests without accidental acceptance of unwanted quests.
 
 | Feature ID | Feature Name | Description | Configuration Key |
@@ -300,6 +330,14 @@ All configuration data is stored per-character via `OzAiO.TOC` entries:
        ["bag.auto_buy_list"] = { [17020] = 20 },  -- itemID = targetQty
        ["bag.auto_sell"] = false,
        ["bag.auto_sell_list"] = { [2589] = true }, -- itemID = true
+
+       -- Loot
+       ["loot.auto_roll_enable"] = true,
+       ["loot.zg_bijous_action"] = "need",
+       ["loot.zg_coins_action"] = "need",
+       ["loot.cot_items_action"] = "need",
+       ["loot.auto_confirm_bop"] = true,
+       ["loot.announce_roll"] = true,
 
        -- Spells
        ["spell.auto_update_rank"] = true,
@@ -374,7 +412,8 @@ All configuration data is stored per-character via `OzAiO.TOC` entries:
 | [lib/libhook.lua](file:///d:/proj/wow_addon/OzAiO/lib/libhook.lua) | 229 | Non-intrusive pre/post hook engine |
 | [lib/configuihelper.lua](file:///d:/proj/wow_addon/OzAiO/lib/configuihelper.lua) | 857 | Unified scrollable panel layout engine, widget templates, theming |
 | [general/general.lua](file:///d:/proj/wow_addon/OzAiO/general/general.lua) | 378 | `/rl` command, font scaler, auto dismount, auto stance |
-| [bag/merchant.lua](file:///d:/proj/wow_addon/OzAiO/bag/merchant.lua) | 745 | Vendor automation (auto sell junk, auto sell list, auto buy list) |
+| [bag/merchant.lua](file:///d:/proj/wow_addon/OzAiO/bag/merchant.lua) <br> [bag/clam_opener.lua](file:///d:/proj/wow_addon/OzAiO/bag/clam_opener.lua) <br> [bag/unlock.lua](file:///d:/proj/wow_addon/OzAiO/bag/unlock.lua) | 1000 | Vendor automation (junk, custom sell/buy), clam opener, Rogue lockpicking |
+| [loot/auto_roll.lua](file:///d:/proj/wow_addon/OzAiO/loot/auto_roll.lua) | 300 | Automated loot roll (ZG Bijous/Coins, CoT Corrupted Sand) & BoP confirm |
 | [spell/update_spell_lvl.lua](file:///d:/proj/wow_addon/OzAiO/spell/update_spell_lvl.lua) <br> [spell/spellbook_mark.lua](file:///d:/proj/wow_addon/OzAiO/spell/spellbook_mark.lua) | 430 | Action bar rank auto-updater, manual rank sweep, spellbook tagging |
 | [chat/chat_core.lua](file:///d:/proj/wow_addon/OzAiO/chat/chat_core.lua) <br> [chat/chat_short_channel_name.lua](file:///d:/proj/wow_addon/OzAiO/chat/chat_short_channel_name.lua) <br> [chat/chat_hc_window.lua](file:///d:/proj/wow_addon/OzAiO/chat/chat_hc_window.lua) | 225 | Chat event/display filter pipelines, short channel names, HC redirect |
 | [minimap/hide_sys_button.lua](file:///d:/proj/wow_addon/OzAiO/minimap/hide_sys_button.lua) | 99 | Minimap button decluttering (Blizzard + Turtle WoW) |
@@ -389,12 +428,13 @@ All configuration data is stored per-character via `OzAiO.TOC` entries:
 | Test Area | Scenario | Expected Behavior |
 | :--- | :--- | :--- |
 | **Framework: Window Resize** | Drag bottom-right corner grabber handle. Test below 500x420 and above 900x850. Reload UI. | Window resizes smoothly; content scroll area expands/contracts; minimum (500x420) and maximum (900x850) bounds are enforced; dimensions persist across `/rl`. |
-| **Framework: Fixed Categories** | Click through all 7 left panel tabs: General, Chat, Minimap, Quest, Actionbar, Buff, Bag. | Each tab activates its unified category viewport without frame collisions; right-hand scrollable container displays all registered category features. |
+| **Framework: Fixed Categories** | Click through all 8 left panel tabs: General, Chat, Minimap, Quest, Actionbar, Buff, Bag, Loot. | Each tab activates its unified category viewport without frame collisions; right-hand scrollable container displays all registered category features. |
 | **Framework: Table Schema UI** | Register a module via `OzFramework:registerMod` with an Automaton-style options schema table. | Checkboxes (`toggle`), sliders (`range`), dropdowns (`select`), buttons (`execute`), and editboxes (`text`) render automatically without manual layout math. |
 | **Libraries: Cross-Addon Isolation** | Load a second addon that also embeds `OzHook` and `OzUIHelper`. | Both addons hook globals without breaking wrappers; higher library version takes precedence; widget names and layout states do not collide. |
 | **General: Dismount** | Mount up, sit down, cast a spell. | Player stands up immediately and cancels mount buff; spell cast initiates without error popup. |
 | **General: Conflict** | Load alongside `pfUI`. | Chat prints detection message; Auto Dismount & Stance handlers yield without error. |
 | **Bag: Auto Sell/Buy** | Open vendor with grey items and configured auto-buy items. | Grey items sell automatically at 0.2s intervals; buy orders execute until target quotas are satisfied; chat reports net cost. |
+| **Loot: Auto Roll** | In group/raid with ZG Bijous, ZG Coins, or CoT Corrupted Sand dropping. | Automatically selects configured action (Need/Greed/Pass), auto-confirms BoP popups if enabled, and outputs audit note to chat. |
 | **Spell: Auto Update** | Train rank 2 of an ability currently on action bar slot 1. | System detects learn message; slot 1 automatically upgrades to rank 2; chat logs upgrade notification. |
 | **Spell: Spellbook Tag** | Open Spellbook with Fireball rank 1 on bar and Frostbolt unassigned. | Fireball text displays red; Frostbolt text displays default yellow. |
 | **World Buff: Test** | Execute `/ozwb onyxia`. | Screen displays pulsing countdown bar; alert audio plays; emergency hearthstone button appears for 10s. |
