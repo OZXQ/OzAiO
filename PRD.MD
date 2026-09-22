@@ -226,15 +226,14 @@ Unlike monolithic UI replacements (such as pfUI) that enforce complete visual ov
 
 ---
 
-#### 4.4 Spell & Action Bar Modules (`spell/update_spell_lvl.lua`, `spell/spellbook_mark.lua`)
-**Primary Objective:** Eliminate manual action bar maintenance when training new abilities and assist in spellbook navigation.
+#### 4.4 Spell & Action Bar Modules (`spell/update_spell_lvl.lua`)
+**Primary Objective:** Eliminate manual action bar maintenance when training new abilities.
 
 | Feature ID | Feature Name | Description | Configuration Key |
 | :--- | :--- | :--- | :--- |
 | **SPL-01** | Auto-Update on Train | Listens to `CHAT_MSG_SYSTEM` for learned spell messages (`"You have learned a new spell: ..."`). Defers by one frame, locates the newly learned highest rank in the spellbook, and updates all matching action bar slots (1-120) with the new rank using `PickupSpell` and `PlaceAction`. | `spell.auto_update_rank` |
 | **SPL-02** | Frame-Budgeted Slot Scanning | Avoids single-frame lag spikes by distributing action bar scanning across frames: advances **1 slot per OnUpdate frame** (120 frames total). Tooltip owner remains hidden to avoid visual glitches. | Automated |
 | **SPL-03** | Manual Action Bar Upgrade Sweep | Provides a one-click button in settings: *"Update All Action Bar Spells Now"*. Sweeps slots 1 through 120 and upgrades any down-ranked abilities to their highest learned spellbook rank. | UI Action Button |
-| **SPL-04** | Spellbook Action Bar Tagging | When viewing the default Blizzard spellbook (`SpellBookFrame`), scans action bar spells and color-codes spell names: <br>- **Red (`#FF0000`):** Spell is already assigned to at least one action bar slot. <br>- **Yellow (`#FFD100`):** Spell is not present on any action bar. <br>Hooks page navigation and skill tab switches with a 1-tick delay to reapply highlights seamlessly. | `spell.tag_spellbook` |
 
 ---
 
@@ -341,7 +340,6 @@ All configuration data is stored per-character via `OzAiO.TOC` entries:
 
        -- Spells
        ["spell.auto_update_rank"] = true,
-       ["spell.tag_spellbook"] = true,
 
        -- Chat
        ["chat.hc_channel_num"] = 1,
@@ -414,7 +412,7 @@ All configuration data is stored per-character via `OzAiO.TOC` entries:
 | [general/general.lua](file:///d:/proj/wow_addon/OzAiO/general/general.lua) | 378 | `/rl` command, font scaler, auto dismount, auto stance |
 | [bag/merchant.lua](file:///d:/proj/wow_addon/OzAiO/bag/merchant.lua) <br> [bag/clam_opener.lua](file:///d:/proj/wow_addon/OzAiO/bag/clam_opener.lua) <br> [bag/unlock.lua](file:///d:/proj/wow_addon/OzAiO/bag/unlock.lua) | 1000 | Vendor automation (junk, custom sell/buy), clam opener, Rogue lockpicking |
 | [loot/auto_roll.lua](file:///d:/proj/wow_addon/OzAiO/loot/auto_roll.lua) | 300 | Automated loot roll (ZG Bijous/Coins, CoT Corrupted Sand) & BoP confirm |
-| [spell/update_spell_lvl.lua](file:///d:/proj/wow_addon/OzAiO/spell/update_spell_lvl.lua) <br> [spell/spellbook_mark.lua](file:///d:/proj/wow_addon/OzAiO/spell/spellbook_mark.lua) | 430 | Action bar rank auto-updater, manual rank sweep, spellbook tagging |
+| [spell/update_spell_lvl.lua](file:///d:/proj/wow_addon/OzAiO/spell/update_spell_lvl.lua) | 240 | Action bar rank auto-updater, manual rank sweep |
 | [chat/chat_core.lua](file:///d:/proj/wow_addon/OzAiO/chat/chat_core.lua) <br> [chat/chat_short_channel_name.lua](file:///d:/proj/wow_addon/OzAiO/chat/chat_short_channel_name.lua) <br> [chat/chat_hc_window.lua](file:///d:/proj/wow_addon/OzAiO/chat/chat_hc_window.lua) | 225 | Chat event/display filter pipelines, short channel names, HC redirect |
 | [minimap/hide_sys_button.lua](file:///d:/proj/wow_addon/OzAiO/minimap/hide_sys_button.lua) | 99 | Minimap button decluttering (Blizzard + Turtle WoW) |
 | [general/superwow.lua](file:///d:/proj/wow_addon/OzAiO/general/superwow.lua) | 372 | SuperWoW CVars, SuperAPI hooks (spell/quest linking, mouseover) |
