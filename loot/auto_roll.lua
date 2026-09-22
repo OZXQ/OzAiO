@@ -8,19 +8,19 @@ local L = setmetatable({}, {
 })
 
 if LOCALE == "zhCN" then
-    L["Auto Roll"] = "自动掷骰"
+    L["Auto Roll"] = "自动需求"
     L["Automatically roll on raid/dungeon reputation items."] = "自动对团队/地下城声望物品进行掷骰（需求/贪婪/放弃）。"
-    L["Enable Auto Roll"] = "启用自动掷骰"
+    L["Enable Auto Roll"] = "启用自动需求"
     L["Auto-Confirm BoP"] = "自动确认拾取绑定"
     L["Automatically confirm Bind on Pickup dialogs for auto-rolled items."] = "对自动掷骰的拾取绑定物品自动点击确定，避免弹窗打断战斗。"
     L["Announce in Chat"] = "聊天栏提示"
     L["Print chat message when automatically rolling on items."] = "在聊天窗口提示自动掷骰操作。"
-    L["ZG Bijous (宝石)"] = "祖尔格拉布宝石"
+    L["Zul Gurub Bijous"] = "祖尔格拉布宝石"
     L["Roll rule for Zul'Gurub Hakkari Bijous (all 9 colors)."] = "祖尔格拉布9种哈卡莱双子宝石的掷骰规则。"
-    L["ZG Coins (硬币)"] = "祖尔格拉布硬币"
+    L["Zul Gurub Coins"] = "祖尔格拉布硬币"
     L["Roll rule for Zul'Gurub Coins (Zulian, Razzashi, Hakkari, etc.)."] = "祖尔格拉布9种声望硬币的掷骰规则。"
-    L["CoT Corrupted Sand (时光之穴)"] = "时光之穴腐蚀之沙"
-    L["Roll rule for Caverns of Time Corrupted Sand (ID 50203)."] = "时光之穴/黑色沼泽腐蚀之沙（ID: 50203）的掷骰规则。"
+    L["CoT BM Corrupted Sand"] = "时光之穴腐蚀之沙"
+    L["Roll rule for Caverns of Time Corrupted Sand."] = "时光之穴腐蚀之沙的掷骰规则。"
     L["Disabled"] = "禁用/手动"
     L["Need"] = "需求"
     L["Greed"] = "贪婪"
@@ -68,74 +68,26 @@ local pending_confirm = {}
 local handled_rolls = {}
 local module = nil
 
--- Item classifier: returns category ("zg_bijous", "zg_coins", "cot_items") or nil
-local function ClassifyItem(itemID, itemName)
-    if itemID then
-        if ZG_BIJOUS[itemID] then return "zg_bijous" end
-        if ZG_COINS[itemID] then return "zg_coins" end
-        if COT_ITEMS[itemID] then return "cot_items" end
-    end
-
-    if itemName then
-        local lowerName = string.lower(itemName)
-        -- Name-based fallback for ZG Bijous
-        if string.find(lowerName, "bijou") or string.find(itemName, "双子宝石") or string.find(itemName, "哈卡莱宝石") then
-            return "zg_bijous"
-        end
-        -- Name-based fallback for ZG Coins
-        if (string.find(lowerName, "coin") or string.find(itemName, "硬币")) and
-           (string.find(lowerName, "zulian") or string.find(lowerName, "razzashi") or
-            string.find(lowerName, "hakkari") or string.find(lowerName, "gurubashi") or
-            string.find(lowerName, "vilebranch") or string.find(lowerName, "witherbark") or
-            string.find(lowerName, "sandfury") or string.find(lowerName, "skullsplitter") or
-            string.find(lowerName, "bloodscalp") or string.find(itemName, "祖利安") or
-            string.find(itemName, "拉扎什") or string.find(itemName, "哈卡莱") or
-            string.find(itemName, "古拉巴什") or string.find(itemName, "邪枝") or
-            string.find(itemName, "枯木") or string.find(itemName, "沙怒") or
-            string.find(itemName, "劈颅") or string.find(itemName, "血顶")) then
-            return "zg_coins"
-        end
-        -- Name-based fallback for CoT Corrupted Sand
-        if string.find(itemName, "腐蚀之沙") or string.find(lowerName, "corrupted sand") then
-            return "cot_items"
-        end
-    end
-
+-- Fast item classification by numeric ID
+local function ClassifyItem(itemID)
+    if not itemID then return nil end
+    if ZG_BIJOUS[itemID] then return "zg_bijous" end
+    if ZG_COINS[itemID] then return "zg_coins" end
+    if COT_ITEMS[itemID] then return "cot_items" end
     return nil
 end
 
-local function GetCategoryAction(category)
-    if not OZAIO_CONFIG then return ACTION_MANUAL end
-    if category == "zg_bijous" then
-        return OZAIO_CONFIG["loot.zg_bijous_action"] or ACTION_NEED
-    elseif category == "zg_coins" then
-        return OZAIO_CONFIG["loot.zg_coins_action"] or ACTION_NEED
-    elseif category == "cot_items" then
-        return OZAIO_CONFIG["loot.cot_items_action"] or ACTION_NEED
-    end
-    return ACTION_MANUAL
-end
+local CATEGORY_CONFIG_KEYS = {
+    zg_bijous = "loot.zg_bijous_action",
+    zg_coins  = "loot.zg_coins_action",
+    cot_items = "loot.cot_items_action",
+}
 
-local function ResolveRollType(action, canNeed, canGreed)
-    if action == ACTION_NEED then
-        if canNeed and (canNeed == 1 or canNeed == true) then
-            return 1 -- Need
-        elseif canGreed and (canGreed == 1 or canGreed == true) then
-            return 2 -- Fallback to Greed
-        else
-            return 0 -- Fallback to Pass
-        end
-    elseif action == ACTION_GREED then
-        if canGreed and (canGreed == 1 or canGreed == true) then
-            return 2 -- Greed
-        else
-            return 0 -- Fallback to Pass
-        end
-    elseif action == ACTION_PASS then
-        return 0 -- Pass
-    end
-    return nil -- Manual
-end
+local ROLL_TYPES = {
+    [ACTION_NEED]  = 1,
+    [ACTION_GREED] = 2,
+    [ACTION_PASS]  = 0,
+}
 
 local function ActionLabel(rollType)
     if rollType == 1 then return "|cff00ff00" .. L["Need"] .. "|r" end
@@ -153,30 +105,25 @@ local function OnStartLootRoll(rollID)
     if OZAIO_CONFIG and OZAIO_CONFIG["loot.auto_roll_enable"] == false then return end
 
     local link = GetLootRollItemLink(rollID)
-    local itemID = nil
-    if link then
-        local _, _, idStr = string.find(link, "item:(%d+)")
-        if idStr then itemID = tonumber(idStr) end
-    end
+    if not link then return end
 
-    local texture, name, count, quality, bop, canNeed, canGreed = GetLootRollItemInfo(rollID)
-    local category = ClassifyItem(itemID, name)
+    local _, _, idStr = string.find(link, "item:(%d+)")
+    if not idStr then return end
+
+    local category = ClassifyItem(tonumber(idStr))
     if not category then return end
 
-    local action = GetCategoryAction(category)
-    if not action or action == ACTION_MANUAL then return end
+    local action = OZAIO_CONFIG and OZAIO_CONFIG[CATEGORY_CONFIG_KEYS[category]] or ACTION_NEED
+    local rollType = ROLL_TYPES[action]
+    if rollType == nil then return end
 
-    local rollType = ResolveRollType(action, canNeed, canGreed)
-    if rollType ~= nil then
-        handled_rolls[rollID] = true
-        pending_confirm[rollID] = rollType
+    handled_rolls[rollID] = true
+    pending_confirm[rollID] = rollType
 
-        RollOnLoot(rollID, rollType)
+    RollOnLoot(rollID, rollType)
 
-        if OZAIO_CONFIG and OZAIO_CONFIG["loot.announce_roll"] ~= false then
-            local displayName = link or (name and ("[" .. name .. "]")) or ("[" .. tostring(itemID or rollID) .. "]")
-            DEFAULT_CHAT_FRAME:AddMessage("|cff00ccff[OzAiO]|r " .. string.format(L["Auto-Rolled %s on %s"], ActionLabel(rollType), displayName))
-        end
+    if OZAIO_CONFIG and OZAIO_CONFIG["loot.announce_roll"] ~= false then
+        DEFAULT_CHAT_FRAME:AddMessage("|cff00ccff[OzAiO]|r " .. string.format(L["Auto-Rolled %s on %s"], ActionLabel(rollType), link))
     end
 end
 
@@ -186,10 +133,14 @@ local function OnConfirmLootRoll(rollID, rollType)
     if OZAIO_CONFIG and OZAIO_CONFIG["loot.auto_confirm_bop"] == false then return end
 
     if pending_confirm[rollID] then
-        ConfirmLootRoll(rollID, rollType)
+        local confirmType = rollType or pending_confirm[rollID]
+        ConfirmLootRoll(rollID, confirmType)
         pending_confirm[rollID] = nil
 
         -- Dismiss matching Blizzard confirmation static popup
+        if StaticPopup_Hide then
+            StaticPopup_Hide("CONFIRM_LOOT_ROLL", rollID)
+        end
         for i = 1, STATICPOPUP_NUMDIALOGS do
             local dialog = getglobal("StaticPopup" .. i)
             if dialog and dialog:IsShown() and dialog.which == "CONFIRM_LOOT_ROLL" then
@@ -204,6 +155,11 @@ event_frame:SetScript("OnEvent", function()
         OnStartLootRoll(arg1)
     elseif event == "CONFIRM_LOOT_ROLL" then
         OnConfirmLootRoll(arg1, arg2)
+    elseif event == "CANCEL_LOOT_ROLL" then
+        if arg1 then
+            handled_rolls[arg1] = nil
+            pending_confirm[arg1] = nil
+        end
     end
 end)
 
@@ -244,7 +200,7 @@ local function build_roll_config_ui()
         { type = "separator" },
         {
             type = "dropdown",
-            label = L["ZG Bijous (宝石)"],
+            label = L["Zul Gurub Bijous"],
             tooltip = L["Roll rule for Zul'Gurub Hakkari Bijous (all 9 colors)."],
             options = action_options,
             config_key = "loot.zg_bijous_action",
@@ -252,7 +208,7 @@ local function build_roll_config_ui()
         },
         {
             type = "dropdown",
-            label = L["ZG Coins (硬币)"],
+            label = L["Zul Gurub Coins"],
             tooltip = L["Roll rule for Zul'Gurub Coins (Zulian, Razzashi, Hakkari, etc.)."],
             options = action_options,
             config_key = "loot.zg_coins_action",
@@ -260,8 +216,8 @@ local function build_roll_config_ui()
         },
         {
             type = "dropdown",
-            label = L["CoT Corrupted Sand (时光之穴)"],
-            tooltip = L["Roll rule for Caverns of Time Corrupted Sand (ID 50203)."],
+            label = L["CoT BM Corrupted Sand"],
+            tooltip = L["Roll rule for Caverns of Time Corrupted Sand."],
             options = action_options,
             config_key = "loot.cot_items_action",
             default = ACTION_NEED,
@@ -290,6 +246,7 @@ module = OzFramework:registerMod({
         if OZAIO_CONFIG and OZAIO_CONFIG["loot.auto_roll_enable"] == false then return end
         event_frame:RegisterEvent("START_LOOT_ROLL")
         event_frame:RegisterEvent("CONFIRM_LOOT_ROLL")
+        event_frame:RegisterEvent("CANCEL_LOOT_ROLL")
     end,
     disable = function(self)
         event_frame:UnregisterAllEvents()

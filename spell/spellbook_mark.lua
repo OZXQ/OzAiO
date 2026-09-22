@@ -163,7 +163,7 @@ local module = OzFramework:registerMod({
     title = L["Tag Action Bar Spells in Spellbook"],
     category = "Actionbar",
     order = 2,
-    enabled = true,
+    enabled = true, 
     config = {
         ["spell.tag_spellbook"] = true,
     },
