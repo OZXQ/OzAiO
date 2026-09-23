@@ -9,7 +9,7 @@ local L = setmetatable({}, {
 if LOCALE == "zhCN" then
     L["HC display window"] = "HC显示窗口"
     L["HC window must be 1-20"] = "HC窗口编号需在1-20之间"
-    L["Chat frame ID (1-20) to redirect Hardcore death announcements."] = "重定向硬核死亡通告的目标聊天窗口编号 (1-20)。"
+    L["Chat frame ID (1-20) to redirect Hardcore messages."] = "重定向硬核消息的目标聊天窗口编号 (1-20)。"
 end
 
 local function filter_hc_redirect(chat)
@@ -44,7 +44,7 @@ local module = OzFramework:registerMod({
         {
             type = "editbox",
             label = L["HC display window"],
-            tooltip = L["Chat frame ID (1-20) to redirect Hardcore death announcements."],
+            tooltip = L["Chat frame ID (1-20) to redirect Hardcore messages."],
             width = 40,
             config_key = "chat.hc_window_num",
             onChange = function(val)

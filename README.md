@@ -63,7 +63,6 @@ Designed under a strict non-intrusive paradigm, OzAiO provides essential modern 
 #### 4. Chat System Enhancements
 - **Two-Stage Architecture**: Independent event-filter and display-filter pipelines.
 - **Short Channel Names**: Shortens verbose prefixes (`[1. General]` -> `[G]`, `[2. Trade]` -> `[T]`, `[World]` -> `[W]`, etc.).
-- **Hardcore Death Redirect**: Intercepts Turtle WoW Hardcore death notices and routes them exclusively to a chosen chat tab/window, keeping main chat clean.
 - **Timed Broadcaster (Auto-Shout)**:
   - Configurable interval in minutes (1–15 mins).
   - Dynamic channel selector (Say, Yell, Guild, Party, Raid, World, Trade, etc.).
