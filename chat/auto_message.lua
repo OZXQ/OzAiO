@@ -32,6 +32,7 @@ if LOCALE == "zhCN" then
     L["Guild"] = "公会"
     L["Party"] = "小队"
     L["Raid"] = "团队"
+    L["Hardcore"] = "硬核"
     L["Message is empty. Please enter a broadcast message first."] = "喊话内容为空，请先输入喊话文本。"
     L["Channel not found or not joined: %s"] = "未找到或未加入频道: %s"
     L["Broadcast sent to %s."] = "已向频道 [%s] 发送喊话。"
@@ -261,7 +262,7 @@ local function raw_send_chat(message, channel_target)
     if not message or message == "" then return end
     channel_target = channel_target or "YELL"
 
-    if channel_target == "YELL" or channel_target == "SAY" or channel_target == "GUILD" or channel_target == "PARTY" or channel_target == "RAID" then
+    if channel_target == "YELL" or channel_target == "SAY" or channel_target == "GUILD" or channel_target == "PARTY" or channel_target == "RAID" or channel_target == "Hardcore" or channel_target == "HARDCORE" then
         SendChatMessage(message, channel_target)
     else
         -- Numeric/Named channel
@@ -351,11 +352,12 @@ end
 
 local function get_channel_options()
     local options = {
-        { label = L["Yell"],  value = "YELL" },
-        { label = L["Say"],   value = "SAY" },
-        { label = L["Guild"], value = "GUILD" },
-        { label = L["Party"], value = "PARTY" },
-        { label = L["Raid"],  value = "RAID" },
+        { label = L["Yell"],     value = "YELL" },
+        { label = L["Say"],      value = "SAY" },
+        { label = L["Guild"],    value = "GUILD" },
+        { label = L["Party"],    value = "PARTY" },
+        { label = L["Raid"],     value = "RAID" },
+        { label = L["Hardcore"], value = "Hardcore" },
     }
 
     local channels = { GetChannelList() }
