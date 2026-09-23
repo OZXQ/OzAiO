@@ -76,7 +76,7 @@ function ozBag:collect_grey_items()
                 local link = GetContainerItemLink(bag, slot)
                 if link and string.find(string.lower(link), "ff9d9d9d", 1, true) then
                     local id = self:GetItemIDFromLink(link)
-                    table.insert(grey_items, {bag = bag, slot = slot, id = id})
+                    table.insert(grey_items, { bag = bag, slot = slot, id = id })
                 end
             end
         end
@@ -265,7 +265,7 @@ function ozBag:action_onshow()
                         if link then
                             local id = ozBag:GetItemIDFromLink(link)
                             if id and sellList[id] then
-                                table.insert(self.sell_queue, {bag = bag, slot = slot, id = id})
+                                table.insert(self.sell_queue, { bag = bag, slot = slot, id = id })
                                 queued[key] = true
                             end
                         end
@@ -387,7 +387,7 @@ function ozBag:action_onclose()
     if m ~= 0 then
         local win, _, _, _, moneyStr = OzLib:convertMoney(m)
         local wl = win and L["gain "] or L["spend "]
-        DEFAULT_CHAT_FRAME:AddMessage("|cff20b2aa[OzAiO] " .. wl .. moneyStr .. "|r")
+        DEFAULT_CHAT_FRAME:AddMessage(wl .. moneyStr .. "|r")
     end
 end
 
@@ -653,17 +653,17 @@ local function build_bag_config_ui(panel)
         {
             type = "row",
             items = {
-                { type = "label", label = L["Sell List"] .. ":", font = "GameFontNormalSmall" },
+                { type = "label",  label = L["Sell List"] .. ":",                     font = "GameFontNormalSmall" },
                 { type = "custom", create = function() return sellList.totalLabel end },
             },
         },
         {
             type = "row",
             items = {
-                { type = "label", label = L["Item ID / Link"] .. ":", font = "GameFontNormalSmall" },
+                { type = "label",  label = L["Item ID / Link"] .. ":",     font = "GameFontNormalSmall" },
                 { type = "custom", create = function() return sellEdit end },
-                { type = "button", label = "+", width = 20, height = 20, func = add_sell_item },
-                { type = "button", label = "-", width = 20, height = 20, func = del_sell_item },
+                { type = "button", label = "+",                            width = 20,                  height = 20, func = add_sell_item },
+                { type = "button", label = "-",                            width = 20,                  height = 20, func = del_sell_item },
             },
         },
         {
@@ -675,7 +675,7 @@ local function build_bag_config_ui(panel)
                 return sellList.scrollFrame
             end,
         },
-        { type = "space", height = 4 },
+        { type = "space",    height = 4 },
         {
             type = "checkbox",
             label = L["Auto Buy Items"],
@@ -689,19 +689,19 @@ local function build_bag_config_ui(panel)
         {
             type = "row",
             items = {
-                { type = "label", label = L["Buy List"] .. ":", font = "GameFontNormalSmall" },
+                { type = "label",  label = L["Buy List"] .. ":",                     font = "GameFontNormalSmall" },
                 { type = "custom", create = function() return buyList.totalLabel end },
             },
         },
         {
             type = "row",
             items = {
-                { type = "label", label = L["Item ID / Link"] .. ":", font = "GameFontNormalSmall" },
+                { type = "label",  label = L["Item ID / Link"] .. ":",       font = "GameFontNormalSmall" },
                 { type = "custom", create = function() return buyEdit end },
-                { type = "label", label = "Qty:", font = "GameFontNormalSmall" },
+                { type = "label",  label = "Qty:",                           font = "GameFontNormalSmall" },
                 { type = "custom", create = function() return buyQtyEdit end },
-                { type = "button", label = "+", width = 20, height = 20, func = add_buy_item },
-                { type = "button", label = "-", width = 20, height = 20, func = del_buy_item },
+                { type = "button", label = "+",                              width = 20,                  height = 20, func = add_buy_item },
+                { type = "button", label = "-",                              width = 20,                  height = 20, func = del_buy_item },
             },
         },
         {

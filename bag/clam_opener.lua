@@ -10,8 +10,6 @@ local L = setmetatable({}, {
 if LOCALE == "zhCN" then
     L["Auto Clam Opener"] = "自动开蚌"
     L["Enable auto clam opening feature."] = "启用自动开蚌功能。"
-    L["Auto Open on Window Close"] = "窗口关闭时自动开蚌"
-    L["Automatically open clams when loot/mail/trade/bank closes."] = "关闭拾取、邮件、交易或银行窗口后自动开蚌。"
     L["Open Clams Now"] = "立即开蚌"
     L["Opening clams..."] = "正在开蚌..."
     L["Clam opener is already running."] = "开蚌功能已在运行中。"
@@ -29,11 +27,11 @@ local CLAM_IDS = {
     [15874] = true, -- Soft-shelled Clam (软壳蚌)
 }
 
-local OPEN_DELAY = 0.5   -- seconds between opens; lets loot/bag updates settle
-local QUIET_DELAY = 0.5  -- seconds of silence after a *_CLOSED event before auto-opening
+local OPEN_DELAY = 0.5  -- seconds between opens; lets loot/bag updates settle
+local QUIET_DELAY = 0.5 -- seconds of silence after a *_CLOSED event before auto-opening
 local running = false
 local silentRun = false
-local pendingToken = 0   -- bumped on every auto-trigger and on LOOT_OPENED to cancel stale timers
+local pendingToken = 0 -- bumped on every auto-trigger and on LOOT_OPENED to cancel stale timers
 local module = nil
 
 -- ==================== Lightweight Timer Frame ====================
@@ -128,8 +126,8 @@ local function OpenNext()
 
     -- Never use a clam while cursor is busy, a blocking window is open, or loot is active
     if CursorHasItem()
-       or IsBlockingWindowOpen()
-       or (GetNumLootItems and GetNumLootItems() > 0) then
+        or IsBlockingWindowOpen()
+        or (GetNumLootItems and GetNumLootItems() > 0) then
         ScheduleTimer(OPEN_DELAY, OpenNext)
         return
     end
@@ -193,9 +191,6 @@ local function tryAutoOpen()
     if OZAIO_CONFIG and OZAIO_CONFIG["bag.clam_opener_enable"] == false then
         return
     end
-    if not (OZAIO_CONFIG and OZAIO_CONFIG["bag.auto_open_clams"]) then
-        return
-    end
     pendingToken = pendingToken + 1
     local myToken = pendingToken
     ScheduleTimer(QUIET_DELAY, function()
@@ -220,14 +215,6 @@ event_frame:SetScript("OnEvent", function()
     end
 end)
 
--- ==================== Slash Command ====================
-
-SLASH_OZCLAM1 = "/ozclam"
-SLASH_OZCLAM2 = "/clam"
-SlashCmdList["OZCLAM"] = function(msg)
-    OzClamOpener:Open(false)
-end
-
 -- ==================== Module Registration ====================
 
 module = OzFramework:registerMod({
@@ -238,7 +225,6 @@ module = OzFramework:registerMod({
     enabled = true,
     config = {
         ["bag.clam_opener_enable"] = true,
-        ["bag.auto_open_clams"] = true,
     },
     config_ui_creator = {
         {
@@ -255,21 +241,6 @@ module = OzFramework:registerMod({
                     end
                 end
             end,
-        },
-        {
-            type = "checkbox",
-            label = L["Auto Open on Window Close"],
-            tooltip = L["Automatically open clams when loot/mail/trade/bank closes."],
-            config_key = "bag.auto_open_clams",
-        },
-        {
-            type = "button",
-            label = L["Open Clams Now"],
-            func = function()
-                OzClamOpener:Open(false)
-            end,
-            width = 120,
-            height = 24,
         },
     },
     enable = function(self)

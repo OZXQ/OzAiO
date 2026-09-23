@@ -1,4 +1,4 @@
-if not OzLib then 
+if not OzLib then
     OzLib = {
         -- print()      print colored message to chat
         -- argCheck()   check function arguments
@@ -58,12 +58,12 @@ end
 
 -- Item quality → RGB color mapping
 OzLib.ITEM_QUALITY_COLORS = {
-    [0] = { 0.62, 0.62, 0.62 },  -- Poor (grey)
-    [1] = { 1, 1, 1 },            -- Common (white)
-    [2] = { 0.12, 1, 0 },         -- Uncommon (green)
-    [3] = { 0.27, 0.51, 1 },      -- Rare (blue)
-    [4] = { 0.64, 0.21, 0.93 },   -- Epic (purple)
-    [5] = { 1, 0.50, 0 },         -- Legendary (orange)
+    [0] = { 0.62, 0.62, 0.62 }, -- Poor (grey)
+    [1] = { 1, 1, 1 },          -- Common (white)
+    [2] = { 0.12, 1, 0 },       -- Uncommon (green)
+    [3] = { 0.27, 0.51, 1 },    -- Rare (blue)
+    [4] = { 0.64, 0.21, 0.93 }, -- Epic (purple)
+    [5] = { 1, 0.50, 0 },       -- Legendary (orange)
 }
 
 -- Returns r, g, b matching the item's quality
@@ -78,4 +78,3 @@ function OzLib:itemQualityColor(id)
     local c = OzLib.ITEM_QUALITY_COLORS[quality] or OzLib.ITEM_QUALITY_COLORS[1]
     return c[1], c[2], c[3]
 end
-

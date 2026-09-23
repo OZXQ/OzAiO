@@ -211,7 +211,7 @@ end
 -- ==================== Module Registration ====================
 
 local module = OzFramework:registerMod({
-    name = "Update Spell Level",
+    name = "oz_spell_rank_updater",
     title = L["Auto Update Spell Rank"],
     category = "Actionbar",
     order = 1,
@@ -225,10 +225,6 @@ local module = OzFramework:registerMod({
             label = L["Auto Update Spell Rank"],
             tooltip = L["Auto-update action bar when learning higher spell rank"],
             config_key = "spell.auto_update_rank",
-        },
-        {
-            type = "space",
-            height = 6,
         },
         {
             type = "button",

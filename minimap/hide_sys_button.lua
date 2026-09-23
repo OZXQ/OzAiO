@@ -57,7 +57,7 @@ local function toggle_system_buttons(state)
 end
 
 local module = OzFramework:registerMod({
-    name = "Hide System Button",
+    name = "oz_sysbtn_hider",
     title = L["Hide System Button"],
     category = "Minimap",
     order = 3,

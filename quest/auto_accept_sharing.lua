@@ -51,7 +51,7 @@ local function on_static_popup_show()
 end
 
 local module = OzFramework:registerMod({
-    name = "Auto Accept Sharing",
+    name = "oz_auto_quest_accept",
     title = L["Auto Accept Sharing"],
     category = "Quest",
     order = 6,

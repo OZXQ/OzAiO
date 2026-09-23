@@ -3,7 +3,7 @@
 ## Title-zhCN: Oz工具箱
 ## Author: Oz
 ## Version: 1.0
-## SavedVariablesPerCharacter: OZAIO, OZAIO_CONFIG, OZAIO_WB_HISTORY
+## SavedVariablesPerCharacter: OZAIO, OZAIO_CONFIG
 
 lib\configuihelper.lua
 lib\lib.lua
@@ -17,6 +17,10 @@ general\general.lua
 chat\chat_core.lua
 chat\chat_short_channel_name.lua
 chat\chat_hc_window.lua
+chat\auto_message.lua
+chat\player_link.lua
+chat\click2inv.lua
+chat\editbox_tweak.lua
 minimap\hide_sys_button.lua
 general\superwow.lua
 general\worldbuff_hud.lua
@@ -27,4 +31,5 @@ bag\unlock.lua
 loot\auto_roll.lua
 spell\update_spell_lvl.lua
 quest\auto_accept_sharing.lua
+quest\quest_automation.lua
 

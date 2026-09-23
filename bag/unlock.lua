@@ -10,10 +10,6 @@ local L = setmetatable({}, {
 if LOCALE == "zhCN" then
     L["Auto Unlock"] = "自动开锁"
     L["Enable Rogue lockpicking utilities."] = "启用潜行者开锁辅助功能。"
-    L["Trade Frame Unlock Button"] = "交易界面开锁按钮"
-    L["Add an Unlock button to the trade window to quickly pick locks on trade items."] = "在交易窗口添加开锁按钮，快速为交易物品开锁。"
-    L["Right-Click Unlock"] = "右键背包开锁"
-    L["Right-click locked boxes in your bags to pick lock."] = "在背包中右键点击锁定的箱子直接开锁。"
     L["Unlock"] = "开锁"
     L["Lockpicking spell not found."] = "未找到开锁技能。"
     L["Cast Pick Lock. If an item is in the 'will not be traded' slot, automatically clicks it."] = "施放开锁技能。如果对方不可交易栏有物品，自动点击该栏位。"
@@ -101,19 +97,17 @@ local function on_bag_item_click(button, ignoreShift)
         if OZAIO_CONFIG and OZAIO_CONFIG["bag.unlock_enable"] == false then
             return
         end
-        if OZAIO_CONFIG and OZAIO_CONFIG["bag.bag_right_click_unlock"] then
-            if not IsInteractingWindowOpen() and not (UnitAffectingCombat and UnitAffectingCombat("player")) and this then
-                local parent = this.GetParent and this:GetParent()
-                local bag = parent and parent.GetID and parent:GetID()
-                local slot = this.GetID and this:GetID()
-                if bag and slot and bag >= 0 and bag <= 4 and slot >= 1 then
-                    if IsItemLocked(bag, slot) then
-                        local spell_id, book = FindPickLockSpell()
-                        if spell_id then
-                            CastSpell(spell_id, book)
-                            PickupContainerItem(bag, slot)
-                            return false -- Intercept: suppress standard ContainerFrameItemButton_OnClick
-                        end
+        if not IsInteractingWindowOpen() and not (UnitAffectingCombat and UnitAffectingCombat("player")) and this then
+            local parent = this.GetParent and this:GetParent()
+            local bag = parent and parent.GetID and parent:GetID()
+            local slot = this.GetID and this:GetID()
+            if bag and slot and bag >= 0 and bag <= 4 and slot >= 1 then
+                if IsItemLocked(bag, slot) then
+                    local spell_id, book = FindPickLockSpell()
+                    if spell_id then
+                        CastSpell(spell_id, book)
+                        PickupContainerItem(bag, slot)
+                        return false -- Intercept: suppress standard ContainerFrameItemButton_OnClick
                     end
                 end
             end
@@ -165,8 +159,7 @@ end
 local function UpdateTradeButtonState()
     if not is_player_rogue() then return end
     local master_enabled = not OZAIO_CONFIG or (OZAIO_CONFIG["bag.unlock_enable"] ~= false)
-    local button_enabled = not OZAIO_CONFIG or (OZAIO_CONFIG["bag.trade_unlock_button"] ~= false)
-    if master_enabled and button_enabled then
+    if master_enabled then
         local btn = EnsureTradeFrameButton()
         if btn and TradeFrame and TradeFrame:IsShown() then
             btn:Show()
@@ -216,21 +209,6 @@ local function build_unlock_config_ui()
             UpdateTradeButtonState()
         end,
     })
-    table.insert(items, {
-        type = "checkbox",
-        label = L["Trade Frame Unlock Button"],
-        tooltip = L["Add an Unlock button to the trade window to quickly pick locks on trade items."],
-        config_key = "bag.trade_unlock_button",
-        onChange = function(val)
-            UpdateTradeButtonState()
-        end,
-    })
-    table.insert(items, {
-        type = "checkbox",
-        label = L["Right-Click Unlock"],
-        tooltip = L["Right-click locked boxes in your bags to pick lock."],
-        config_key = "bag.bag_right_click_unlock",
-    })
     return items
 end
 
@@ -242,8 +220,6 @@ module = OzFramework:registerMod({
     enabled = true,
     config = {
         ["bag.unlock_enable"] = true,
-        ["bag.trade_unlock_button"] = true,
-        ["bag.bag_right_click_unlock"] = true,
     },
     config_ui_creator = build_unlock_config_ui,
     enable = function(self)

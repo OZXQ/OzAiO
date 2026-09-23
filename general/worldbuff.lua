@@ -304,7 +304,6 @@ local function check_logout(now)
     if currentZone == "Orgrimmar" or currentZone == "Stormwind City" then
         Logout()
     end
-    
 end
 
 -- Logout/hearthstone polling moved into the consolidated ticker below.
@@ -414,8 +413,12 @@ local function on_system_message()
     )
     if not dd then return end
     local st = time({
-        year = tonumber(yyyy), month = tonumber(mm), day = tonumber(dd),
-        hour = tonumber(hh), min = tonumber(mi), sec = tonumber(ss)
+        year = tonumber(yyyy),
+        month = tonumber(mm),
+        day = tonumber(dd),
+        hour = tonumber(hh),
+        min = tonumber(mi),
+        sec = tonumber(ss)
     })
     -- Sanity check: reject garbage matches (e.g. unrelated system messages)
     -- that would produce a nonsense time offset
@@ -763,8 +766,12 @@ local function on_system_message()
     )
     if not dd then return end
     local st = time({
-        year = tonumber(yyyy), month = tonumber(mm), day = tonumber(dd),
-        hour = tonumber(hh), min = tonumber(mi), sec = tonumber(ss)
+        year = tonumber(yyyy),
+        month = tonumber(mm),
+        day = tonumber(dd),
+        hour = tonumber(hh),
+        min = tonumber(mi),
+        sec = tonumber(ss)
     })
     if st and math.abs(st - time()) < 2 * 86400 then
         server_time_offset = st - time()
@@ -801,30 +808,6 @@ event_frame:SetScript("OnEvent", function()
     end
 end)
 
--- ================== Slash Command ==================
--- Accept common spellings/casing for the test command
-local dragon_aliases = {
-    onyxia = "Onyxia",
-    nef = "Nefarian",
-    nefarian = "Nefarian",
-}
-
-SLASH_OZWORLDBUFF1 = "/ozwb"
-SlashCmdList["OZWORLDBUFF"] = function(msg)
-    local faction = get_faction()
-    local key = string.lower(string.gsub(msg or "", "%s", ""))
-    local dragon_type = dragon_aliases[key] or (key ~= "" and key or "Onyxia")
-
-    if not dragon_config[faction] or not dragon_config[faction][dragon_type] then
-        OzLib.print(L["Invalid dragon type, use Onyxia or Nefarian"], "error")
-        return
-    end
-
-    trigger_alert(faction, dragon_type)
-    DEFAULT_CHAT_FRAME:AddMessage(L["Test world buff: "] .. dragon_config[faction][dragon_type].msg)
-end
-
--- ================== Module Registration ==================
 -- ================== Module Registration ==================
 
 local module

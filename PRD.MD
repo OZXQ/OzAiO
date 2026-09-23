@@ -90,7 +90,7 @@ Unlike monolithic UI replacements (such as pfUI) that enforce complete visual ov
   - **`type = "custom"`**: Escape hatch for arbitrary custom frames/widgets. Attributes: `create = function(parent) return frame, height end`.
 
 - **Collapsible / Foldable Module Sections:**
-  Every registered module in the option UI renders with an interactive foldable header (`OzUIHelper:createFoldableHeader`) featuring `[-]` / `[+]` toggle indicators, title highlight on hover, and localized collapse/expand hints. All sections expand by default upon opening the UI. Folding dynamically reflows all section widgets in-memory and recalculates scroll dimensions without recreating frames. Folded state is not persisted across sessions.
+  Modules with multiple options render with an interactive foldable header (`OzUIHelper:createFoldableHeader`) featuring `[-]` / `[+]` toggle indicators, title highlight on hover, and localized collapse/expand hints. All sections expand by default upon opening the UI. Folding dynamically reflows all section widgets in-memory and recalculates scroll dimensions without recreating frames. Folded state is not persisted across sessions. **Single-Option Optimization:** Modules containing only a single option omit the redundant header bar, displaying the option directly to conserve vertical screen space.
 
 - **Backward Compatibility:**
   Legacy `OzFramework:register(id, moduleTable)` remains supported alongside `registerMod`. Legacy modules using `create_config_panel` are automatically mapped to their corresponding fixed category tab (`oz_general` & `oz_superwow` $\rightarrow$ `General`, `oz_chat` $\rightarrow$ `Chat`, `oz_minimap` $\rightarrow$ `Minimap`, `oz_quest` $\rightarrow$ `Quest`, `oz_spell` $\rightarrow$ `Actionbar`, `oz_worldbuff` $\rightarrow$ `Buff`, `oz_bag` $\rightarrow$ `Bag`).
@@ -98,7 +98,6 @@ Unlike monolithic UI replacements (such as pfUI) that enforce complete visual ov
 - **Config Storage:** Saved variables stored per character:
   - `OZAIO_CONFIG`: Key-value registry for all module settings.
   - `OZAIO`: Core settings (e.g., `minimap_angle`, `info_level`, `config_size = { width, height }`).
-  - `OZAIO_WB_HISTORY`: Historical world buff cache.
 - **Config Initialization:** Merges module default settings into `OZAIO_CONFIG` on `ADDON_LOADED` without overwriting existing user configurations.
 
 #### 3.2 Non-Intrusive Hooking Engine (`lib/libhook.lua` - `OzHook`)
@@ -192,9 +191,9 @@ Unlike monolithic UI replacements (such as pfUI) that enforce complete visual ov
 | **BAG-05** | Inventory Sync Verification | Listens to `BAG_UPDATE` to confirm receipt of bought items before advancing the buy queue, preventing stock desync or race conditions under server latency. | Automated |
 | **BAG-06** | Financial Audit Summary | Summarizes vendor transactions in chat upon `MERCHANT_CLOSED`, detailing items bought, total costs, and net money gained/spent. | Automated |
 | **BAG-07** | Smart Item Input Parser | Item lists accept raw numeric Item IDs, pasted chat item links, or partial name searches (scans current bags and merchant window). | Configuration UI |
-| **BAG-08** | Auto Clam Opener | Iterates player bags for clam items (IDs: 5523, 5524, 7973, 15874). Opens sequentially with 0.5s intervals. Auto-triggered on `LOOT_CLOSED`, `MAIL_CLOSED`, `TRADE_CLOSED`, `BANKFRAME_CLOSED` (with 0.5s quiet delay and `LOOT_OPENED` cancellation). Avoids `BAG_UPDATE` to eliminate race conditions with autoloot. Includes safety gates against open blocking windows and active loot. Slash command `/ozclam`. | `bag.clam_opener_enable`, `bag.auto_open_clams` |
-| **BAG-09** | Trade Frame Unlock Button | Adds an "Unlock" button to the trade window (`TradeFrameCancelButton` anchor) for Rogues. Casts Pick Lock and automatically targets slot 7 ("will not be traded") if an item is present. | `bag.unlock_enable`, `bag.trade_unlock_button` |
-| **BAG-10** | Bag Right-Click Unlock | Hooks `ContainerFrameItemButton_OnClick` via `OzHook` for Rogues. Right-clicking locked boxes in inventory automatically casts Pick Lock on the box. | `bag.unlock_enable`, `bag.bag_right_click_unlock` |
+| **BAG-08** | Auto Clam Opener | Iterates player bags for clam items (IDs: 5523, 5524, 7973, 15874). Opens sequentially with 0.5s intervals. Auto-triggered on `LOOT_CLOSED`, `MAIL_CLOSED`, `TRADE_CLOSED`, `BANKFRAME_CLOSED` (with 0.5s quiet delay and `LOOT_OPENED` cancellation). Avoids `BAG_UPDATE` to eliminate race conditions with autoloot. Includes safety gates against open blocking windows and active loot. | `bag.clam_opener_enable` |
+| **BAG-09** | Trade Frame Unlock Button | Adds an "Unlock" button to the trade window (`TradeFrameCancelButton` anchor) for Rogues. Casts Pick Lock and automatically targets slot 7 ("will not be traded") if an item is present. | `bag.unlock_enable` |
+| **BAG-10** | Bag Right-Click Unlock | Hooks `ContainerFrameItemButton_OnClick` via `OzHook` for Rogues. Right-clicking locked boxes in inventory automatically casts Pick Lock on the box. | `bag.unlock_enable` |
 
 ---
 
@@ -207,7 +206,7 @@ Unlike monolithic UI replacements (such as pfUI) that enforce complete visual ov
 | **LOT-02** | ZG Bijous Auto Roll | Automatically rolls on all 9 Zul'Gurub Hakkari Bijous. Configurable actions: `Need`, `Greed`, `Pass`, or `Manual` (ignore/prompt). | `loot.zg_bijous_action` |
 | **LOT-03** | ZG Coins Auto Roll | Automatically rolls on all 9 Zul'Gurub Coins. Configurable actions: `Need`, `Greed`, `Pass`, or `Manual` (ignore/prompt). | `loot.zg_coins_action` |
 | **LOT-04** | CoT Corrupted Sand Auto Roll | Automatically rolls on Caverns of Time reputation item: **Corrupted Sand** (腐蚀之沙, ID: `50203`). Configurable actions: `Need`, `Greed`, `Pass`, or `Manual` (ignore/prompt). | `loot.cot_items_action` |
-| **LOT-05** | BoP Popup Auto-Confirm | Automatically confirms the `CONFIRM_LOOT_ROLL` modal dialog for items processed by the auto-roll system, eliminating blocking confirmation prompts. | `loot.auto_confirm_bop` |
+| **LOT-05** | BoP Popup Auto-Confirm | Automatically confirms the `CONFIRM_LOOT_ROLL` modal dialog for items processed by the auto-roll system, eliminating blocking confirmation prompts. | `loot.auto_roll_enable` |
 
 ##### 4.3.1 Auto Roll Detailed Technical Specifications (`loot/auto_roll.lua`)
 - **Event Pipeline:**
@@ -221,7 +220,7 @@ Unlike monolithic UI replacements (such as pfUI) that enforce complete visual ov
      - `"greed"`: Calls `RollOnLoot(rollID, 2)`.
      - `"pass"`: Calls `RollOnLoot(rollID, 0)`.
      - `"manual"`: No action taken; standard Blizzard roll frame remains visible.
-  4. Auto-Confirm: Tracks active `rollID` in a session table. When `CONFIRM_LOOT_ROLL` triggers for an auto-rolled item and `loot.auto_confirm_bop` is enabled, calls `ConfirmLootRoll(rollID, rollType)` immediately and suppresses the `CONFIRM_LOOT_ROLL` static popup.
+  4. Auto-Confirm: Tracks active `rollID` in a session table. When `CONFIRM_LOOT_ROLL` triggers for an auto-rolled item, calls `ConfirmLootRoll(rollID, rollType)` immediately and suppresses the `CONFIRM_LOOT_ROLL` static popup.
   5. Audit Output: Prints a clean colored notification to chat when `loot.announce_roll` is enabled (e.g. `[OzAiO] Auto-Rolled Need on [Corrupted Sand]`).
 
 ---
@@ -245,6 +244,10 @@ Unlike monolithic UI replacements (such as pfUI) that enforce complete visual ov
 | **CHT-01** | Two-Stage Chat Pipeline | Provides an extensible chat processor separating **Event Filters** (inspects/cancels/redirects raw events) from **Display Filters** (mutates formatted strings in `AddMessage`). | Architecture |
 | **CHT-02** | Channel Name Shortening | Replaces verbose standard channel tags in `ChatFrameX:AddMessage` with concise brackets: <br>- `[General]` / `[综合]` -> `[G]` / `[综]` <br>- `[Trade]` / `[交易]` -> `[T]` / `[交]` <br>- `[World]` / `[世界]` -> `[W]` / `[世]` <br>- `[LookingForGroup]` / `[寻求组队]` -> `[LFG]` / `[组]` <br>- `[Hardcore]` / `[硬核]` -> `[H]` / `[核]`, etc. | `chat.short_channel_name` |
 | **CHT-03** | Hardcore Channel Redirection | Traps Turtle WoW Hardcore death messages (`CHAT_MSG_HARDCORE`) and suppresses them from default chat frames, redirecting them solely to a designated chat tab/frame ID (Configurable: 1 to 20). | `chat.hc_channel_num` |
+| **CHT-04** | Timed Message Broadcaster | Automatically broadcasts configured messages to a selected chat channel on a periodic timer: <br>- **Configurable Interval (Minutes):** UI slider/input configured directly in minutes (Range: 1 to 15 minutes, Default: 2 minutes; stored in `chat.broadcast_interval`). <br>- **Dynamic Channel Selector:** Dropdown dynamically populated with standard channels (`SAY`, `YELL`, `GUILD`, `PARTY`, `RAID`) and active numbered channels from `GetChannelList()` (e.g. `General`, `Trade`, `World`), filtering out private sync channels (`TWB`, `LFT`), identical to the `worldbuff_hud.lua` channel menu. <br>- **Hybrid Item Link Resolution (Method 1 + Method 3):** <br>&nbsp;&nbsp;1. *Direct Shift-Click (Method 1):* EditBox accepts native item hyperlinks inserted via Shift-clicking items in bags, character sheet, or chat. <br>&nbsp;&nbsp;2. *Bracketed Name Resolution (Method 3):* Automatically scans message text for bracketed names (e.g. `[Lionheart Helm]` or `[狮心头盔]`), queries inventory bags (`GetContainerItemLink`), equipment slots (`GetInventoryItemLink`), and client item cache (`GetItemInfo`), replacing them with authentic clickable item hyperlinks (`|c...|Hitem:...|h[...] |h|r`). <br>- **Input Pre-Validation & Caching:** Upon user input/edit in the UI, immediately parses and validates raw message tokens, checking item availability in bags/cache and pre-caching resolved output to save runtime inventory scanning overhead. <br>- **Automatic Message Chunk Splitting (>255 Bytes):** Checks total byte length after item link resolution against WoW's native 255-character chat packet limit. If exceeded, safely splits the message into 2 or 3 parts at clean word/token boundaries without truncating or corrupting embedded hyperlink tags (`|c...|r`), sending parts sequentially with a 0.2s debounce to prevent server flood disconnects. <br>- **Combat & Death Throttling Guard:** Automatically pauses timer ticks while player is in combat (`UnitAffectingCombat("player")`) or dead/ghost, resuming cleanly upon recovery. <br>- **Test Dispatch:** Provides a one-click test button in settings to broadcast immediately for visual inspection. | `chat.broadcast_enable`, <br>`chat.broadcast_interval`, <br>`chat.broadcast_channel`, <br>`chat.broadcast_message`, <br>`chat.broadcast_combat_pause` |
+| **CHT-05** | Player Name Link Shift-Click | Enables Shift-clicking a player's name link in the chat log while `ChatFrameEditBox` is visible to automatically insert their formatted clickable player hyperlink (`|cffffffff|Hplayer:Name|h[Name]|h|r`) directly into the active chat edit box, cancelling the default `/who` lookup. | `chat.player_link` |
+| **CHT-06** | Clickable Auto-Invite Links | Converts common group invite trigger words (`1`, `111`, `inv`, `invite`, `组`, `求组`, `组我`, `组队`, etc.) in public and group channels into clickable hyperlinks (`|cff00ffff|Hinvite:Sender|h[...]|h|r`). Clicking the bracketed link in chat immediately fires `InviteByName(sender)`. | `chat.click2inv` |
+| **CHT-07** | EditBox Center & History Arrows | Centers `ChatFrameEditBox` at the bottom of the screen while dynamically dodging bottom action bars (`MainMenuBarArtFrame`, `MultiBarBottomLeft`, `MultiBarBottomRight`, `PetActionBarFrame`, `ShapeshiftBarFrame`) via `UIParent_ManageFramePositions`. Enables direct Up/Down arrow key chat history iteration without requiring Alt (`ChatFrameEditBox:SetAltArrowKeyMode(false)`). | `chat.editbox_tweak` |
 
 ---
 
@@ -287,17 +290,44 @@ Unlike monolithic UI replacements (such as pfUI) that enforce complete visual ov
 | **WBF-08** | Automated Safety Logout | Initiates `/logout` exactly 60 seconds after buff drop. Validates that the player is in Orgrimmar or Stormwind and delays logout tick-by-tick if the player is in combat. | `worldbuff.auto_logout` |
 | **WBF-09** | Floating Timer Frame (HUD) | Draggable, semi-transparent HUD showing active cooldowns for all 4 dragon buffs (`[A] Onyxia`, `[A] Nefarian`, `[H] Onyxia`, `[H] Nefarian`) in remaining minutes (`<45m>`) or `<None>`. Position is persisted in `worldbuff.timer_pos`. | `worldbuff.timer`, `worldbuff.timer_pos` |
 | **WBF-10** | Right-Click Share Menu | Right-clicking the timer frame opens a dropdown menu to broadcast current buff cooldown status to Say, Yell, Guild, Party, Raid, Hardcore, or any custom joined chat channels. | UI Context Menu |
-| **WBF-11** | Test Command | Slash command `/ozwb [onyxia|nef]` to trigger simulation alerts for testing UI, audio, and countdown elements. | Built-in (`/ozwb`) |
 
----
-
-#### 4.9 Quest Automation Module (`quest/auto_accept_sharing.lua` - `oz_quest`)
-**Primary Objective:** Zero-click acceptance of group-shared quests without accidental acceptance of unwanted quests.
+#### 4.9 Quest Automation Modules (`quest/auto_accept_sharing.lua`, `quest/quest_automation.lua`)
+**Primary Objective:** Streamline quest acquisition, dialogue progression, and quest turn-ins with zero clicks while strictly safeguarding player choices and preventing accidental quest or reward selections.
 
 | Feature ID | Feature Name | Description | Configuration Key |
 | :--- | :--- | :--- | :--- |
-| **QST-01** | Auto-Accept Shared Quests | Listens to `QUEST_SHOW` events and hooks `StaticPopup_OnShow` for popup type `QUEST_ACCEPT`. Automatically calls `ConfirmAcceptQuest()` and dismisses the dialog. | `quest.accept_sharing` |
-| **QST-02** | Alt-Key Bypass | Checks `IsAltKeyDown()`. If the player holds the Alt key while a party member shares a quest, auto-accept is temporarily suppressed, allowing the player to view or decline the quest manually. | Automated |
+| **QST-01** | Auto-Accept Shared Quests | Listens to `QUEST_SHOW` events and hooks `StaticPopup_OnShow` for popup type `QUEST_ACCEPT`. Automatically calls `ConfirmAcceptQuest()` and dismisses the modal dialog. | `quest.accept_sharing` |
+| **QST-02** | Auto-Accept Available Quests | Intercepts available quest offerings (`QUEST_DETAIL`, `QUEST_GREETING`, and `GOSSIP_SHOW`). Automatically invokes `AcceptQuest()` or selects available quest indices using native 1.12 C-APIs without artificial UI clicks. | `quest.auto_accept` |
+| **QST-03** | Auto-Complete Finished Quests | Automates quest progression through `QUEST_PROGRESS` (invoking `CompleteQuest()` if `IsQuestCompletable()`) and `QUEST_COMPLETE`. Intercepts `GOSSIP_SHOW` and `QUEST_GREETING` to automatically select ready-to-turn-in quests. | `quest.auto_complete` |
+| **QST-04** | Multi-Reward Safety Net | Protects player gear choices: <br>- When a quest offers **0 choices** (money/fixed items only) or **exactly 1 choice**, automatically claims the reward via `GetQuestReward(1)`. <br>- When a quest offers **multiple reward choices (> 1)**, auto-completion is **halted** by default to allow manual player inspection, unless an explicit reward choice is matched in the custom turn-in rules. | Safety Architecture |
+| **QST-05** | Single-Option Gossip Auto-Skip | When conversing with an NPC with **no available/active quests** and **exactly one gossip option** (e.g. Flight Master taxi map, Banker vault, single-line lore triggers), automatically selects that option via `SelectGossipOption(1)`. | `quest.skip_gossip` |
+| **QST-06** | Gossip Skip Blacklist | Configurable blacklist of NPC names or substrings that should **never** be auto-skipped (e.g. Battlemasters, Class/Talent Trainers, Innkeepers), preventing accidental teleportation, respec dialogs, or taxi departures. | `quest.skip_gossip_blacklist` |
+| **QST-07** | Custom & Repeatable Turn-in Rules | Dedicated support for reputation repeatable turn-ins (e.g. Thorium Brotherhood, Argent Dawn tokens, ZG Bijous/Coins, Timbermaw, BG Marks). Allows defining specific quests with designated reward indices (1–4) for rapid turn-ins. | `quest.custom_turnin_rules` |
+| **QST-08** | Alt-Key Temporary Bypass | Holding the `Alt` key (`IsAltKeyDown()`) temporarily disables all quest and gossip automation, allowing manual inspection of dialogue, rewards, or quest objectives without toggling addon settings. | Automated (`Alt` key) |
+
+##### 4.9.1 Technical Architecture & Comparison with Legacy Addons (Automatonex)
+
+Unlike legacy implementations (such as `Automatonex/QuestAutomation.lua`), which exhibit brittle frame scraping and global namespace pollution, OzAiO's Quest Automation adheres to clean architectural principles:
+
+1. **Native 1.12 C-APIs vs. Fragile UI Button Scraping**:
+   - *Legacy Flaw:* Loops through `GossipTitleButton1..32` and `QuestTitleButton1..32`, scraping `.type` and text, calling `:Click()` on UI buttons. This breaks under custom UI reskins (pfUI, ModUI, ElvUI) and risks frame script recursion.
+   - *Oz-Optimized:* Utilizes Blizzard's native 1.12 C-APIs directly:
+     - **Gossip:** `GetNumGossipAvailableQuests()`, `SelectGossipAvailableQuest(i)`, `GetNumGossipActiveQuests()`, `SelectGossipActiveQuest(i)`, `GetNumGossipOptions()`, `SelectGossipOption(i)`.
+     - **Greeting:** `GetNumAvailableQuests()`, `SelectAvailableQuest(i)`, `GetNumActiveQuests()`, `SelectActiveQuest(i)`.
+     - **Completion:** `IsQuestCompletable()`, `CompleteQuest()`, `GetNumQuestChoices()`, `GetQuestReward(choiceIndex)`.
+
+2. **Non-Disruptive Quest Log Cache**:
+   - *Legacy Flaw:* Invokes `SelectQuestLogEntry(i)` in a loop during `QUEST_LOG_UPDATE`, which changes the player's active quest log selection and disrupts the quest log UI.
+   - *Oz-Optimized:* Reads the 7th return value of `GetQuestLogTitle(i)` (`isComplete`) without mutating log selection, maintaining a lightweight hash cache of completed quest titles in memory.
+
+3. **Multi-Reward Protection Architecture**:
+   - Never auto-picks arbitrary items when gear decisions exist. Automatically completes zero-choice or single-choice quests, but leaves multi-choice equipment rewards open for deliberate player choice unless defined in `quest.custom_turnin_rules`.
+
+4. **Single-Tick Debounce & State Protection**:
+   - Employs a single-tick debounce (`OzHook` / 1-frame dispatch) to prevent event bouncing or re-trigger loops when NPCs trigger back-to-back gossip and greeting frames.
+
+5. **Non-Intrusive Popup Handling**:
+   - Replaces raw global overwrites of `StaticPopup_OnShow` with clean `OzHook` or event-driven `QUEST_ACCEPT` confirmation, preserving Blizzard static popup stack integrity.
 
 ---
 
@@ -306,7 +336,7 @@ Unlike monolithic UI replacements (such as pfUI) that enforce complete visual ov
 #### 5.1 SavedVariables Architecture
 All configuration data is stored per-character via `OzAiO.TOC` entries:
 ```lua
-## SavedVariablesPerCharacter: OZAIO, OZAIO_CONFIG, OZAIO_WB_HISTORY
+## SavedVariablesPerCharacter: OZAIO, OZAIO_CONFIG
 ```
 
 1. **`OZAIO` (Global State Table):**
@@ -335,7 +365,6 @@ All configuration data is stored per-character via `OzAiO.TOC` entries:
        ["loot.zg_bijous_action"] = "need",
        ["loot.zg_coins_action"] = "need",
        ["loot.cot_items_action"] = "need",
-       ["loot.auto_confirm_bop"] = true,
        ["loot.announce_roll"] = true,
 
        -- Spells
@@ -344,6 +373,11 @@ All configuration data is stored per-character via `OzAiO.TOC` entries:
        -- Chat
        ["chat.hc_channel_num"] = 1,
        ["chat.short_channel_name"] = true,
+       ["chat.broadcast_enable"] = false,
+       ["chat.broadcast_interval"] = 2,            -- minutes (e.g. 1 to 15, default 2)
+       ["chat.broadcast_channel"] = "YELL",
+       ["chat.broadcast_message"] = "",
+       ["chat.broadcast_combat_pause"] = true,
 
        -- Minimap
        ["minimap.hide_system_buttons"] = true,
@@ -368,11 +402,19 @@ All configuration data is stored per-character via `OzAiO.TOC` entries:
        ["worldbuff.auto_logout"] = false,
        ["worldbuff.timer_pos"] = { 100, 300 },      -- { leftOffset, bottomOffset }
 
-       -- Quest
-       ["quest.accept_sharing"] = true,
+        -- Quest & Dialogue Automation
+        ["quest.accept_sharing"] = true,
+        ["quest.auto_accept"] = true,
+        ["quest.auto_complete"] = true,
+        ["quest.skip_gossip"] = false,
+        ["quest.skip_gossip_blacklist"] = {
+            ["Battlemaster"] = true,
+            ["Innkeeper"] = true,
+            ["Spirit Healer"] = true,
+        },
+        ["quest.custom_turnin_rules"] = {},
    }
    ```
-3. **`OZAIO_WB_HISTORY`:** Persistent cross-session history table for recorded world buff drops.
 
 ---
 
@@ -413,11 +455,11 @@ All configuration data is stored per-character via `OzAiO.TOC` entries:
 | [bag/merchant.lua](file:///d:/proj/wow_addon/OzAiO/bag/merchant.lua) <br> [bag/clam_opener.lua](file:///d:/proj/wow_addon/OzAiO/bag/clam_opener.lua) <br> [bag/unlock.lua](file:///d:/proj/wow_addon/OzAiO/bag/unlock.lua) | 1000 | Vendor automation (junk, custom sell/buy), clam opener, Rogue lockpicking |
 | [loot/auto_roll.lua](file:///d:/proj/wow_addon/OzAiO/loot/auto_roll.lua) | 300 | Automated loot roll (ZG Bijous/Coins, CoT Corrupted Sand) & BoP confirm |
 | [spell/update_spell_lvl.lua](file:///d:/proj/wow_addon/OzAiO/spell/update_spell_lvl.lua) | 240 | Action bar rank auto-updater, manual rank sweep |
-| [chat/chat_core.lua](file:///d:/proj/wow_addon/OzAiO/chat/chat_core.lua) <br> [chat/chat_short_channel_name.lua](file:///d:/proj/wow_addon/OzAiO/chat/chat_short_channel_name.lua) <br> [chat/chat_hc_window.lua](file:///d:/proj/wow_addon/OzAiO/chat/chat_hc_window.lua) | 225 | Chat event/display filter pipelines, short channel names, HC redirect |
+| [chat/chat_core.lua](file:///d:/proj/wow_addon/OzAiO/chat/chat_core.lua) <br> [chat/chat_short_channel_name.lua](file:///d:/proj/wow_addon/OzAiO/chat/chat_short_channel_name.lua) <br> [chat/chat_hc_window.lua](file:///d:/proj/wow_addon/OzAiO/chat/chat_hc_window.lua) <br> [chat/auto_message.lua](file:///d:/proj/wow_addon/OzAiO/chat/auto_message.lua) | 350 | Chat filter pipelines, short channel names, HC redirect, periodic auto broadcaster with item link resolution |
 | [minimap/hide_sys_button.lua](file:///d:/proj/wow_addon/OzAiO/minimap/hide_sys_button.lua) | 99 | Minimap button decluttering (Blizzard + Turtle WoW) |
 | [general/superwow.lua](file:///d:/proj/wow_addon/OzAiO/general/superwow.lua) | 372 | SuperWoW CVars, SuperAPI hooks (spell/quest linking, mouseover) |
 | [general/worldbuff.lua](file:///d:/proj/wow_addon/OzAiO/general/worldbuff.lua) <br> [general/worldbuff_hud.lua](file:///d:/proj/wow_addon/OzAiO/general/worldbuff_hud.lua) | 900 | World buff detection, TWB sync, timer HUD, alert countdown, hearthstone |
-| [quest/auto_accept_sharing.lua](file:///d:/proj/wow_addon/OzAiO/quest/auto_accept_sharing.lua) | 86 | Shared quest auto-accept with Alt-key override |
+| [quest/auto_accept_sharing.lua](file:///d:/proj/wow_addon/OzAiO/quest/auto_accept_sharing.lua) <br> [quest/quest_automation.lua](file:///d:/proj/wow_addon/OzAiO/quest/quest_automation.lua) | 350 | Shared quest auto-accept, NPC quest accept/complete automation, single gossip skip |
 
 ---
 
@@ -438,6 +480,7 @@ All configuration data is stored per-character via `OzAiO.TOC` entries:
 | **World Buff: Test** | Execute `/ozwb onyxia`. | Screen displays pulsing countdown bar; alert audio plays; emergency hearthstone button appears for 10s. |
 | **World Buff: Sync** | Join `TWB` channel with other clients online. | Receives `SyncS:` messages; timer HUD reflects active dragon buff minutes remaining; right-click dropdown shares to chat. |
 | **Quest: Shared Quests** | Party member shares a quest; test with and without holding Alt. | Automatically accepted without prompt when Alt is released; prompt appears normally when Alt is held down. |
+| **Chat: Auto Message** | Enter message with `[Item Name]` or pasted Shift-link, select channel (e.g. `YELL` or `Trade`), interval 2m. | Ticker dispatches message at interval; item names convert to interactive colored links; pauses in combat; test button sends immediately. |
 | **SuperWoW: Macro** | Open macro window with SuperWoW active. | Character counter shows `X/511`; editor accepts macros longer than 255 characters. |
 
 ---

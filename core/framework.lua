@@ -101,8 +101,8 @@ end
 
 -- ==================== Layout Aliases ====================
 
-local MD = OzUIHelper.Metrics.dialog  -- dialog component sizes
-local M  = OzUIHelper.Metrics         -- general widget sizes + minimap
+local MD             = OzUIHelper.Metrics.dialog -- dialog component sizes
+local M              = OzUIHelper.Metrics -- general widget sizes + minimap
 
 -- Minimap asset paths
 local MINIMAP_ASSETS = {
@@ -272,19 +272,17 @@ local function create_schema_widget(parent, item)
             set_value(checked)
         end)
         attach_tooltip(widget, item.tooltip, item.label)
-
     elseif itype == "dropdown" or itype == "select" then
         widget = OzUIHelper:createDropdown(parent, item.label or "", item.options or {}, get_value(), function(val)
             set_value(val)
         end)
         attach_tooltip(widget, item.tooltip, item.label)
-
     elseif itype == "slider" or itype == "range" then
-        widget = OzUIHelper:createSlider(parent, item.label or "", item.min or 0, item.max or 100, item.step or 1, get_value(), function(val)
+        widget = OzUIHelper:createSlider(parent, item.label or "", item.min or 0, item.max or 100, item.step or 1,
+            get_value(), function(val)
             set_value(val)
         end, item.width)
         attach_tooltip(widget, item.tooltip, item.label)
-
     elseif itype == "editbox" or itype == "text" then
         widget = OzUIHelper:createLabeledEditBox(parent, (item.label or "") .. ":", item.width or 60)
         local val = get_value()
@@ -293,31 +291,34 @@ local function create_schema_widget(parent, item)
             set_value(newVal)
         end)
         attach_tooltip(widget, item.tooltip, item.label)
-
+    elseif itype == "editarea" or itype == "textarea" then
+        widget = OzUIHelper:createLabeledEditArea(parent, item.label or "", item.width or 280, item.height or 60)
+        local val = get_value()
+        if val ~= nil then widget:SetValue(val) end
+        widget:SetCallback(function(newVal)
+            set_value(newVal)
+        end)
+        attach_tooltip(widget, item.tooltip, item.label)
+        if item.onCreated then item.onCreated(widget) end
     elseif itype == "button" or itype == "execute" then
         widget = OzUIHelper:createButton(parent, item.label or "", function()
             if item.func then item.func() end
         end, item.width, item.height)
         attach_tooltip(widget, item.tooltip, item.label)
-
     elseif itype == "header" then
         widget = OzUIHelper:createHeader(parent, item.label or "")
-
     elseif itype == "label" then
         local fs = OzUIHelper:createLabel(parent, item.label or "", item.font or OzUIHelper.Fonts.normal)
         if item.color then
             fs:SetTextColor(unpack(item.color))
         end
         widget = fs
-
     elseif itype == "separator" then
         widget = OzUIHelper:createSeparator(parent, item.width)
-
     elseif itype == "itemlist" then
         local listWidget = OzUIHelper:createScrollItemList(parent, item.opts or {})
         if listWidget and listWidget.refresh then listWidget:refresh() end
         widget = listWidget and listWidget.scrollFrame or nil
-
     elseif itype == "custom" and type(item.create) == "function" then
         widget = item.create(parent)
     end
@@ -386,7 +387,8 @@ local function create_config_ui()
 
     frame:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        tile = true, tileSize = 32,
+        tile = true,
+        tileSize = 32,
         insets = { left = 11, right = 12, top = 12, bottom = 11 }
     })
     frame:SetBackdropColor(0, 0, 0, 0.8)
@@ -401,7 +403,7 @@ local function create_config_ui()
     -- Title bar (inset within dialog border)
     local H = MD.header
     local header = CreateFrame("Frame", nil, frame)
-    header:SetPoint("TOPLEFT",  frame, "TOPLEFT",  H.insetL, -H.insetT)
+    header:SetPoint("TOPLEFT", frame, "TOPLEFT", H.insetL, -H.insetT)
     header:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -H.insetR, -H.insetT)
     header:SetHeight(H.height)
 
@@ -450,15 +452,15 @@ local function create_config_ui()
 
     local tabFrame = CreateFrame("Frame", nil, frame)
     tabFrame:ClearAllPoints()
-    OzUIHelper:anchor(tabFrame, frame, "TOPLEFT",    "TOPLEFT",    LM.margin, LM.topOffset)
+    OzUIHelper:anchor(tabFrame, frame, "TOPLEFT", "TOPLEFT", LM.margin, LM.topOffset)
     OzUIHelper:anchor(tabFrame, frame, "BOTTOMLEFT", "BOTTOMLEFT", LM.margin, LM.bottomOffset)
     tabFrame:SetWidth(MD.tab.width)
     OzUIHelper:applyBackdrop(tabFrame, "panel")
 
     local contentContainer = CreateFrame("Frame", nil, frame)
     contentContainer:ClearAllPoints()
-    OzUIHelper:anchor(contentContainer, tabFrame, "TOPLEFT",     "TOPRIGHT", LM.gap, 0)
-    OzUIHelper:anchor(contentContainer, frame,    "BOTTOMRIGHT", "BOTTOMRIGHT", -LM.margin, LM.bottomOffset)
+    OzUIHelper:anchor(contentContainer, tabFrame, "TOPLEFT", "TOPRIGHT", LM.gap, 0)
+    OzUIHelper:anchor(contentContainer, frame, "BOTTOMRIGHT", "BOTTOMRIGHT", -LM.margin, LM.bottomOffset)
     OzUIHelper:applyBackdrop(contentContainer, "panel")
 
     local category_panels = {}
@@ -546,14 +548,13 @@ local function create_config_ui()
                             end
                             w:Show()
                             y = y - item.height - self.spacing
-
                         elseif item.type == "row" then
                             local x = self.padding
                             for _, w in ipairs(item.widgets) do
                                 local ww = (w._layout and w._layout.width)
-                                        or (w.GetStringWidth and w:GetStringWidth())
-                                        or (w.GetWidth and w:GetWidth())
-                                        or 100
+                                    or (w.GetStringWidth and w:GetStringWidth())
+                                    or (w.GetWidth and w:GetWidth())
+                                    or 100
                                 w:ClearAllPoints()
                                 w:SetParent(self.scrollChild)
                                 w:SetPoint("TOPLEFT", self.scrollChild, "TOPLEFT", x, y)
@@ -561,7 +562,6 @@ local function create_config_ui()
                                 x = x + ww + (item.rowSpacing or self.rowSpacing)
                             end
                             y = y - item.height - self.spacing
-
                         elseif item.type == "space" then
                             y = y - item.height
                         end
@@ -588,7 +588,8 @@ local function create_config_ui()
         end
 
         if table.getn(catMods) == 0 then
-            local emptyLabel = OzUIHelper:createLabel(panel.scrollChild, L["No modules registered in this category."], "GameFontNormalSmall")
+            local emptyLabel = OzUIHelper:createLabel(panel.scrollChild, L["No modules registered in this category."],
+                "GameFontNormalSmall")
             emptyLabel:SetTextColor(0.5, 0.5, 0.5)
             panel:Add(emptyLabel, { height = 24 })
         else
@@ -599,24 +600,51 @@ local function create_config_ui()
                     schema = schema(panel)
                 end
 
-                local isFolded = false  -- Expand all by default; do not persist folding state
+                local isSingleOption = false
+                if schema and type(schema) == "table" and not (schema.IsObjectType or schema.frame) then
+                    local optionCount = 0
+                    for _, item in ipairs(schema) do
+                        if type(item) == "table" then
+                            local itype = item.type and string.lower(item.type) or "label"
+                            if itype == "row" and type(item.items) == "table" then
+                                for _, subItem in ipairs(item.items) do
+                                    if type(subItem) == "table" then
+                                        local stype = subItem.type and string.lower(subItem.type) or "label"
+                                        if stype ~= "space" and stype ~= "label" and stype ~= "header" then
+                                            optionCount = optionCount + 1
+                                        end
+                                    end
+                                end
+                            elseif itype ~= "space" and itype ~= "label" and itype ~= "header" then
+                                optionCount = optionCount + 1
+                            end
+                        end
+                    end
+                    if optionCount <= 1 then
+                        isSingleOption = true
+                    end
+                end
+
+                local isFolded = false -- Expand all by default; do not persist folding state
 
                 local secHeader = nil
                 local section = nil
-                secHeader = OzUIHelper:createFoldableHeader(panel.scrollChild, headerTitle, isFolded, function(btn)
-                    local header = btn or secHeader or (section and section.header)
-                    section.isFolded = not section.isFolded
-                    if header and header.SetFolded then
-                        header:SetFolded(section.isFolded)
-                    end
-                    panel:RelayoutSections()
-                end, L)
+                if not isSingleOption then
+                    secHeader = OzUIHelper:createFoldableHeader(panel.scrollChild, headerTitle, isFolded, function(btn)
+                        local header = btn or secHeader or (section and section.header)
+                        section.isFolded = not section.isFolded
+                        if header and header.SetFolded then
+                            header:SetFolded(section.isFolded)
+                        end
+                        panel:RelayoutSections()
+                    end, L)
+                end
 
                 section = {
                     mod = mod,
                     header = secHeader,
-                    headerHeight = 20,
-                    isFoldable = true,
+                    headerHeight = secHeader and 20 or 0,
+                    isFoldable = (secHeader ~= nil),
                     isFolded = isFolded,
                     items = {},
                     spaceAfter = (modIdx < table.getn(catMods)) and 6 or 0,
@@ -647,12 +675,14 @@ local function create_config_ui()
                                     local rowWidgets = {}
                                     local maxH = 0
                                     for _, subItem in ipairs(item.items) do
+                                        if isSingleOption and (subItem.label == nil or subItem.label == "") then
+                                            subItem.label = headerTitle
+                                        end
                                         local w = create_schema_widget(panel.scrollChild, subItem)
                                         if w then
                                             local wh = (w._layout and w._layout.height)
-                                                    or (w.GetStringHeight and w:GetStringHeight())
-                                                    or (w.GetHeight and w:GetHeight())
-                                                    or 18
+                                                or (w.GetHeight and w:GetHeight())
+                                                or 18
                                             if wh > maxH then maxH = wh end
                                             table.insert(rowWidgets, w)
                                             table.insert(panel.widgets, w)
@@ -668,20 +698,15 @@ local function create_config_ui()
                                         })
                                     end
                                 else
+                                    if isSingleOption and (item.label == nil or item.label == "") then
+                                        item.label = headerTitle
+                                    end
                                     local w = create_schema_widget(panel.scrollChild, item)
                                     if w then
-                                        local wh = item.height
-                                        if not wh then
-                                            if w._layout and w._layout.height and w._layout.height > 0 then
-                                                wh = w._layout.height
-                                            elseif w.GetStringHeight and w:GetStringHeight() and w:GetStringHeight() > 0 then
-                                                wh = w:GetStringHeight()
-                                            elseif w.GetHeight and w:GetHeight() and w:GetHeight() > 0 then
-                                                wh = w:GetHeight()
-                                            else
-                                                wh = 18
-                                            end
-                                        end
+                                        local wh = (w._layout and w._layout.height and w._layout.height > 0 and w._layout.height)
+                                            or (w.GetHeight and w:GetHeight() and w:GetHeight() > 0 and w:GetHeight())
+                                            or item.height
+                                            or 18
                                         table.insert(section.items, {
                                             type = "widget",
                                             widget = w,
@@ -838,12 +863,62 @@ local function create_minimap_button()
     return button
 end
 
+local function hook_shift_click_insert()
+    -- Hook ContainerFrameItemButton_OnClick (Bags)
+    OzHook:hook("ContainerFrameItemButton_OnClick", function(button, ignoreShift)
+        if button == "LeftButton" and IsShiftKeyDown() and not ignoreShift then
+            local ea = OzUIHelper and OzUIHelper._activeEditArea
+            if ea and ea:IsVisible() then
+                local parent = this:GetParent()
+                local bag = parent and parent:GetID()
+                local slot = this:GetID()
+                if bag and slot then
+                    local link = GetContainerItemLink(bag, slot)
+                    if link then
+                        ea:Insert(link)
+                        return false
+                    end
+                end
+            end
+        end
+    end)
+
+    -- Hook PaperDollItemSlotButton_OnClick (Equipped Gear)
+    OzHook:hook("PaperDollItemSlotButton_OnClick", function(button, ignoreShift)
+        if button == "LeftButton" and IsShiftKeyDown() and not ignoreShift then
+            local ea = OzUIHelper and OzUIHelper._activeEditArea
+            if ea and ea:IsVisible() then
+                local slot = this:GetID()
+                if slot then
+                    local link = GetInventoryItemLink("player", slot)
+                    if link then
+                        ea:Insert(link)
+                        return false
+                    end
+                end
+            end
+        end
+    end)
+
+    -- Hook SetItemRef (Chat Links)
+    OzHook:hook("SetItemRef", function(link, text, button)
+        if IsShiftKeyDown() then
+            local ea = OzUIHelper and OzUIHelper._activeEditArea
+            if ea and ea:IsVisible() then
+                ea:Insert(text or link)
+                return false
+            end
+        end
+    end)
+end
+
 -- ==================== Initialization ====================
 
 local function on_addon_loaded()
     if arg1 ~= OzFramework.core.name or OzFramework.core.initialized then return end
     merge_config()
     OzFramework.core.initialized = true
+    hook_shift_click_insert()
 
     for _, mod in pairs(OzFramework.core.modules) do
         if mod.enabled and mod.enable then
@@ -857,4 +932,3 @@ end
 local event_frame = CreateFrame("Frame")
 event_frame:RegisterEvent("ADDON_LOADED")
 event_frame:SetScript("OnEvent", on_addon_loaded)
-

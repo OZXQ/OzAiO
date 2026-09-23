@@ -11,8 +11,6 @@ if LOCALE == "zhCN" then
     L["Auto Roll"] = "自动需求"
     L["Automatically roll on raid/dungeon reputation items."] = "自动对团队/地下城声望物品进行掷骰（需求/贪婪/放弃）。"
     L["Enable Auto Roll"] = "启用自动需求"
-    L["Auto-Confirm BoP"] = "自动确认拾取绑定"
-    L["Automatically confirm Bind on Pickup dialogs for auto-rolled items."] = "对自动掷骰的拾取绑定物品自动点击确定，避免弹窗打断战斗。"
     L["Announce in Chat"] = "聊天栏提示"
     L["Print chat message when automatically rolling on items."] = "在聊天窗口提示自动掷骰操作。"
     L["Zul Gurub Bijous"] = "祖尔格拉布宝石"
@@ -130,7 +128,6 @@ end
 local function OnConfirmLootRoll(rollID, rollType)
     if not rollID then return end
     if OZAIO_CONFIG and OZAIO_CONFIG["loot.auto_roll_enable"] == false then return end
-    if OZAIO_CONFIG and OZAIO_CONFIG["loot.auto_confirm_bop"] == false then return end
 
     if pending_confirm[rollID] then
         local confirmType = rollType or pending_confirm[rollID]
@@ -187,12 +184,6 @@ local function build_roll_config_ui()
         },
         {
             type = "checkbox",
-            label = L["Auto-Confirm BoP"],
-            tooltip = L["Automatically confirm Bind on Pickup dialogs for auto-rolled items."],
-            config_key = "loot.auto_confirm_bop",
-        },
-        {
-            type = "checkbox",
             label = L["Announce in Chat"],
             tooltip = L["Print chat message when automatically rolling on items."],
             config_key = "loot.announce_roll",
@@ -235,7 +226,6 @@ module = OzFramework:registerMod({
     enabled = true,
     config = {
         ["loot.auto_roll_enable"] = true,
-        ["loot.auto_confirm_bop"] = true,
         ["loot.announce_roll"]   = true,
         ["loot.zg_bijous_action"] = ACTION_NEED,
         ["loot.zg_coins_action"]  = ACTION_NEED,

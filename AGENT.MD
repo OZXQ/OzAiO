@@ -12,6 +12,8 @@ World of Warcraft 1.12.1 (client build 5875) executes a customized **Lua 5.0.2**
 
 | Feature | Status in WoW 1.12 | Correct Alternative |
 | :--- | :--- | :--- |
+| **`FontString:GetStringHeight()`** | ❌ **DOES NOT EXIST** | NEVER call `fs:GetStringHeight()`. In 1.12, FontStrings only have `GetStringWidth()`. Use `fs:GetHeight()`, standard metric defaults (e.g. 14), or guarded fallback `(fs.GetStringHeight and fs:GetStringHeight()) or fs:GetHeight() or 14`. |
+| **`ChatEdit_InsertLink()`** | ❌ **DOES NOT EXIST** | Introduced in WoW 2.0. In 1.12, use `ChatFrameEditBox:Insert(link)` or hook `ContainerFrameItemButton_OnClick`. |
 | **Length Operator (`#t`)** | ❌ **SYNTAX ERROR** | Use `table.getn(t)` for tables, `string.len(s)` for strings. |
 | **Integer Division (`//`)** | ❌ **SYNTAX ERROR** | Use `math.floor(a / b)`. |
 | **Bitwise Operators (`&`, `\|`, `~`)** | ❌ **SYNTAX ERROR** | Use arithmetic emulation or SuperWoW bitlib if available. |
@@ -64,6 +66,21 @@ end)
 - **Frame Leaks:** Never call `CreateFrame` inside loops, `OnUpdate`, or repeated UI `refresh()` calls.
 - **Frame Pooling:** Always recycle rows and buttons using a virtual row pool table (`rowPool = {}`). Show active rows and hide unused rows.
 - **Parenting:** Always explicitly specify the parent frame. If orphaned, frames will fail to inherit scale or hide/show state.
+
+### FontString APIs: Strictly NEVER Call `GetStringHeight()`
+> [!CAUTION]
+> **`FontString:GetStringHeight()` DOES NOT EXIST in WoW 1.12.1 (Build 5875).**
+> Calling `fontString:GetStringHeight()` will immediately crash the UI with:
+> `attempt to call method 'GetStringHeight' (a nil value)`.
+> - **Width:** `fontString:GetStringWidth()` IS supported natively.
+> - **Height:** `fontString:GetStringHeight()` was only introduced in TBC (WoW 2.0).
+> - **Correct alternatives:**
+>   - Use `fontString:GetHeight()` (returns the allocated frame height).
+>   - Use fixed standard font metrics (e.g. `14` for body text, `18` for headers).
+>   - Use guarded fallback if dynamic height is desired:
+>     ```lua
+>     local h = (fs.GetStringHeight and fs:GetStringHeight()) or (fs.GetHeight and fs:GetHeight()) or 14
+>     ```
 
 ### Strata Hierarchy
 When overlapping frames or popups, use standard strata:

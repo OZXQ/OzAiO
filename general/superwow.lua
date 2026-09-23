@@ -148,7 +148,6 @@ end
 -- Originals are captured at load (FrameXML runs first); hooks are applied in
 -- module.enable and restored in module.disable so a /reload re-applies them.
 
-local orig_set_item_ref        = SetItemRef
 local orig_spellbutton_click   = SpellButton_OnClick
 local orig_set_item_count      = SetItemButtonCount
 local orig_unitframe_enter     = UnitFrame_OnEnter
@@ -182,10 +181,12 @@ local function install_api_hooks()
     end
 
     -- Spell links render as "enchant:" so tooltips show on click
-    SetItemRef = function(link, text, button)
-        link = string.gsub(link, "spell:", "enchant:")
-        orig_set_item_ref(link, text, button)
+    local function pre_spell_link_ref(link, text, button)
+        if link and string.find(link, "spell:") then
+            return string.gsub(link, "spell:", "enchant:"), text, button
+        end
     end
+    OzHook:hook("SetItemRef", pre_spell_link_ref)
 
     -- Item buttons: keep base counts, but render SuperWoW's special negative
     -- counts yellow with "*" beyond -999
@@ -253,8 +254,8 @@ local function install_api_hooks()
 end
 
 local function uninstall_api_hooks()
+    OzHook:unhook("SetItemRef", pre_spell_link_ref)
     SpellButton_OnClick = orig_spellbutton_click
-    SetItemRef = orig_set_item_ref
     SetItemButtonCount = orig_set_item_count
     UnitFrame_OnEnter = orig_unitframe_enter
     UnitFrame_OnLeave = orig_unitframe_leave
