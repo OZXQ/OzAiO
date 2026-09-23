@@ -1,7 +1,12 @@
-if not SUPERWOW_VERSION then
-    OzLib.print("superwow isn't installed, please check dll","error")
+local sw_version = tonumber(SUPERWOW_VERSION) or 0
+if sw_version == 0 then
+    if OzLib and OzLib.print then
+        OzLib.print("superwow isn't installed, please check dll", "error")
+    end
     return
 end
+
+local is_v22 = (sw_version >= 2.2)
 
 local LOCALE = GetLocale()
 local L = setmetatable({}, {
@@ -36,6 +41,15 @@ if LOCALE == "zhCN" then
     L["Uncaps sound hardware/software channels to 64 for rich audio fidelity."] = "解除声道上限限制，提升至64通道以获得更丰富的声音细节。"
     L["Camera field of view multiplier (1.0 to 2.5). Requires /rl to take effect."] = "镜头视野倍率(1.0 - 2.5)。需要输入 /rl 重载界面生效。"
     L["Style of the selection indicator circle underneath your target."] = "当前选定目标脚下的光圈样式。"
+    L["Floating Healing Text"] = "浮动治疗数字"
+    L["Toggle display of in-world healing feedback (requires combat text enabled)."] = "在游戏世界中显示对目标进行治疗的浮动绿色数字反馈（需要先在游戏界面设置中开启浮动战斗信息）。"
+    L["Floating Healing Text requires Combat Text enabled in Interface Options."] = "浮动治疗数字需要先在游戏界面设置中开启浮动战斗信息，否则可能导致客户端崩溃。"
+    L["Nameplate Motion"] = "姓名板排列模式"
+    L["Changes the behavior of moving nameplates."] = "更改目标姓名板在屏幕上的堆叠与分散排列方式。"
+    L["Default spread"] = "默认堆叠分散"
+    L["Smart spread"] = "智能分散"
+    L["Compact spread"] = "紧凑堆叠"
+    L["Overlap"] = "重叠"
 end
 
 -- Setting mutators
@@ -142,17 +156,41 @@ local function set_clickthrough(enabled)
     OZAIO_CONFIG["superwow.click_through"] = enabled
 end
 
+local function set_healing_text(enabled)
+    if not is_v22 then return end
+    if enabled then
+        -- CombatDamage must be enabled in WoW client or HealingText triggers Error #132 in CCombatText renderer
+        local combatDamage = GetCVar and GetCVar("CombatDamage")
+        if combatDamage == "0" then
+            if OzLib and OzLib.print then
+                OzLib.print(L["Floating Healing Text requires Combat Text enabled in Interface Options."], "warning")
+            end
+            pcall(SetCVar, "HealingText", "0")
+            OZAIO_CONFIG["superwow.healing_text"] = false
+            return
+        end
+        pcall(SetCVar, "HealingText", "1")
+    else
+        pcall(SetCVar, "HealingText", "0")
+    end
+    OZAIO_CONFIG["superwow.healing_text"] = enabled
+end
+
+local function set_nameplate_motion(value)
+    if not is_v22 then return end
+    value = tonumber(value) or 1
+    pcall(SetCVar, "NameplateMotion", tostring(value))
+    OZAIO_CONFIG["superwow.nameplate_motion"] = value
+end
+
 -- ================== SuperAPI-style hooks ==================
 -- Ported from SuperAPI for SuperWoW 1.2: spell links, spell shift-click,
--- item counts, unitframe mouseover, combat-text names and quest links.
+-- item counts, and quest links.
 -- Originals are captured at load (FrameXML runs first); hooks are applied in
 -- module.enable and restored in module.disable so a /reload re-applies them.
 
 local orig_spellbutton_click   = SpellButton_OnClick
 local orig_set_item_count      = SetItemButtonCount
-local orig_unitframe_enter     = UnitFrame_OnEnter
-local orig_unitframe_leave     = UnitFrame_OnLeave
-local orig_combat_text         = CombatText_AddMessage
 local orig_questlog_click      = QuestLogTitleButton_OnClick
 
 -- Build a chat link for a spell ID; "enchant:" is used because the Vanilla
@@ -210,45 +248,33 @@ local function install_api_hooks()
         orig_set_item_count(button, count)
     end
 
-    -- Unit frames: expose the hovered unit via SuperWoW SetMouseoverUnit
-    UnitFrame_OnEnter = function()
-        if orig_unitframe_enter then orig_unitframe_enter() end
-        SetMouseoverUnit(this.unit)
-    end
-    UnitFrame_OnLeave = function()
-        if orig_unitframe_leave then orig_unitframe_leave() end
-        SetMouseoverUnit()
-    end
-
-    -- Scrolling combat text: replace internal unit GUIDs with names
-    CombatText_AddMessage = function(message, scrollFunction, r, g, b, displayType, isStaggered)
-        local newMessage = string.gsub(
-            message,
-            "(%s%[)(0x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x)(%])",
-            function(bracket1, hex, bracket2)
-                if UnitIsUnit(hex, "player") then return nil end
-                return " [" .. UnitName(hex) .. "]"
-            end)
-        return orig_combat_text(newMessage, scrollFunction, r, g, b, displayType, isStaggered)
-    end
-
-    -- Quest log: shift-click a quest to insert its chat link. Vanilla cannot
-    -- resolve quest-log IDs; SuperWoW's QuestInfo_GetQuestID makes it work.
-    if orig_questlog_click and QuestInfo_GetQuestID then
-        QuestLogTitleButton_OnClick = function()
-            local id = this:GetID()
-            if id > 0 and IsShiftKeyDown()
+    -- Quest log: shift-click a quest to insert its chat link using SuperWoW
+    if orig_questlog_click then
+        QuestLogTitleButton_OnClick = function(button)
+            local offset = (FauxScrollFrame_GetOffset and QuestLogListScrollFrame) and FauxScrollFrame_GetOffset(QuestLogListScrollFrame) or 0
+            local questIndex = this:GetID() + offset
+            if IsShiftKeyDown() and not this.isHeader
                 and ChatFrameEditBox and ChatFrameEditBox:IsVisible() then
-                QuestLog_SetSelection(id)
-                local questID = QuestInfo_GetQuestID()
-                local title, level = GetQuestLogTitle(id)
-                if questID and title then
-                    ChatFrameEditBox:Insert(
-                        "|cff808080|Hquest:" .. questID .. ":" .. (level or 1) .. "|h[" .. title .. "]|h|r")
+                local questLink = nil
+                -- SuperWoW 2.2+ native quest link API
+                if is_v22 and GetQuestLinkForLogIndex then
+                    questLink = GetQuestLinkForLogIndex(questIndex)
+                end
+                -- Fallback for SuperWoW 1.5
+                if not questLink and QuestInfo_GetQuestID then
+                    QuestLog_SetSelection(questIndex)
+                    local questID = QuestInfo_GetQuestID()
+                    local title, level = GetQuestLogTitle(questIndex)
+                    if questID and title then
+                        questLink = "|cff808080|Hquest:" .. questID .. ":" .. (level or 1) .. "|h[" .. title .. "]|h|r"
+                    end
+                end
+                if questLink then
+                    ChatFrameEditBox:Insert(questLink)
                     return
                 end
             end
-            orig_questlog_click()
+            orig_questlog_click(button)
         end
     end
 end
@@ -257,31 +283,13 @@ local function uninstall_api_hooks()
     OzHook:unhook("SetItemRef", pre_spell_link_ref)
     SpellButton_OnClick = orig_spellbutton_click
     SetItemButtonCount = orig_set_item_count
-    UnitFrame_OnEnter = orig_unitframe_enter
-    UnitFrame_OnLeave = orig_unitframe_leave
-    CombatText_AddMessage = orig_combat_text
     QuestLogTitleButton_OnClick = orig_questlog_click
 end
 
 -- ================== Module Registration ==================
 
-local module = OzFramework:registerMod({
-    name = "oz_superwow",
-    title = L["SuperWoW"],
-    category = "General",
-    order = 4,
-    enabled = true,
-    config = {
-        ["superwow.auto_loot"] = true,
-        ["superwow.click_through"] = false,
-        ["superwow.shift_loot"] = false,
-        ["superwow.fov"] = 1.5,
-        ["superwow.background_sound"] = true,
-        ["superwow.selection_circle_style"] = 1,
-        ["superwow.loot_sparkle"] = true,
-        ["superwow.uncapped_sounds"] = true,
-    },
-    config_ui_creator = {
+local function build_superwow_config_ui()
+    local items = {
         {
             type = "checkbox",
             label = L["Autoloot (Read tooltip)"],
@@ -336,36 +344,91 @@ local module = OzFramework:registerMod({
                 set_uncapped_sound(checked)
             end,
         },
-        { type = "space", height = 6 },
-        {
-            type = "slider",
-            label = L["Field of view (Requires reload)"],
-            tooltip = L["Camera field of view multiplier (1.0 to 2.5). Requires /rl to take effect."],
-            min = 1.0,
-            max = 2.5,
-            step = 0.1,
-            config_key = "superwow.fov",
-            onChange = function(val)
-                set_fov(val)
+    }
+
+    if is_v22 then
+        table.insert(items, {
+            type = "checkbox",
+            label = L["Floating Healing Text"],
+            tooltip = L["Toggle display of in-world healing feedback (requires combat text enabled)."],
+            config_key = "superwow.healing_text",
+            onChange = function(checked)
+                set_healing_text(checked)
             end,
+        })
+    end
+
+    table.insert(items, { type = "space", height = 6 })
+    table.insert(items, {
+        type = "slider",
+        label = L["Field of view (Requires reload)"],
+        tooltip = L["Camera field of view multiplier (1.0 to 2.5). Requires /rl to take effect."],
+        min = 1.0,
+        max = 2.5,
+        step = 0.1,
+        config_key = "superwow.fov",
+        onChange = function(val)
+            set_fov(val)
+        end,
+    })
+    table.insert(items, { type = "space", height = 6 })
+    table.insert(items, {
+        type = "dropdown",
+        label = L["Selection circle style"],
+        tooltip = L["Style of the selection indicator circle underneath your target."],
+        options = {
+            { label = L["Default - incomplete circle"], value = 1 },
+            { label = L["Full circle"], value = 2 },
+            { label = L["Full circle with arrow"], value = 3 },
+            { label = L["Classic oriented circle"], value = 4 },
         },
-        { type = "space", height = 6 },
-        {
+        config_key = "superwow.selection_circle_style",
+        onChange = function(val)
+            set_selection_circle_style(val)
+        end,
+    })
+
+    if is_v22 then
+        table.insert(items, { type = "space", height = 6 })
+        table.insert(items, {
             type = "dropdown",
-            label = L["Selection circle style"],
-            tooltip = L["Style of the selection indicator circle underneath your target."],
+            label = L["Nameplate Motion"],
+            tooltip = L["Changes the behavior of moving nameplates."],
             options = {
-                { label = L["Default - incomplete circle"], value = 1 },
-                { label = L["Full circle"], value = 2 },
-                { label = L["Full circle with arrow"], value = 3 },
-                { label = L["Classic oriented circle"], value = 4 },
+                { label = L["Default spread"], value = 1 },
+                { label = L["Smart spread"], value = 2 },
+                { label = L["Compact spread"], value = 3 },
+                { label = L["Overlap"], value = 0 },
             },
-            config_key = "superwow.selection_circle_style",
+            config_key = "superwow.nameplate_motion",
             onChange = function(val)
-                set_selection_circle_style(val)
+                set_nameplate_motion(val)
             end,
-        },
+        })
+    end
+
+    return items
+end
+
+local module = OzFramework:registerMod({
+    name = "oz_superwow",
+    title = L["SuperWoW"],
+    category = "General",
+    order = 4,
+    enabled = true,
+    config = {
+        ["superwow.auto_loot"] = true,
+        ["superwow.click_through"] = false,
+        ["superwow.shift_loot"] = false,
+        ["superwow.fov"] = 1.5,
+        ["superwow.background_sound"] = true,
+        ["superwow.selection_circle_style"] = 1,
+        ["superwow.loot_sparkle"] = true,
+        ["superwow.uncapped_sounds"] = true,
+        ["superwow.healing_text"] = false,
+        ["superwow.nameplate_motion"] = 1,
     },
+    config_ui_creator = build_superwow_config_ui,
     enable = function(self)
         -- Extend macro frame to 511 characters
         if MacroFrame_LoadUI then
@@ -386,10 +449,13 @@ local module = OzFramework:registerMod({
         set_selection_circle_style(get_sw_config("superwow.selection_circle_style", 1))
         set_bg_sound(get_sw_config("superwow.background_sound", true))
         set_uncapped_sound(get_sw_config("superwow.uncapped_sounds", true))
+        if is_v22 then
+            set_healing_text(get_sw_config("superwow.healing_text", false))
+            set_nameplate_motion(get_sw_config("superwow.nameplate_motion", 1))
+        end
         apply_autoloot()
 
-        -- SuperAPI-style global hooks (spell links, item counts, unitframe
-        -- mouseover, combat text names, quest links)
+        -- SuperAPI-style global hooks (spell links, item counts, quest links)
         install_api_hooks()
     end,
     disable = function(self)

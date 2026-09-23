@@ -29,6 +29,17 @@ if LOCALE == "zhCN" then
     "零奖励或唯一奖励任务会自动交付。多选一装备奖励会暂停由玩家自选，确保不选错装备。"
 end
 
+local whitelist_npc = {}
+if LOCALE == "zhCN" then
+    whitelist_npc = {
+        "黛西"
+    }
+elseif LOCALE == "enUS" then
+    whitelist_npc = {
+        "Daisy"
+    }
+end
+
 -- ==================== State & Cache ====================
 
 local completed_quests_cache = {}
@@ -160,6 +171,23 @@ local function handle_gossip_show()
         end
     end
 
+    -- Special Exception: NPC Daisy (Mirage Raceway) - immediately select option 1 to join race without waiting
+    local npc_name = UnitName("npc") or UnitName("target") or ""
+    local is_whitelisted = false
+    for _, npc in ipairs(whitelist_npc) do
+        if string.find(npc_name, npc, 1, true) then
+            is_whitelisted = true
+            break
+        end
+    end
+
+    local gossipOptions = { GetGossipOptions() }
+    local numOptions = math.floor(table.getn(gossipOptions) / 2)
+    if is_whitelisted and numOptions > 0 then
+        SelectGossipOption(1)
+        return
+    end
+
     -- 2. Check for available quests
     local availableQuests = { GetGossipAvailableQuests() }
     local numAvailable = math.floor(table.getn(availableQuests) / 2)
@@ -170,16 +198,12 @@ local function handle_gossip_show()
 
     -- 3. QST-05 & QST-06: Single-Option Gossip Auto-Skip & Blacklist
     if OZAIO_CONFIG and OZAIO_CONFIG["quest.skip_gossip"] then
-        local gossipOptions = { GetGossipOptions() }
-        local numOptions = math.floor(table.getn(gossipOptions) / 2)
         if numActive == 0 and numAvailable == 0 and numOptions == 1 then
-            local npc_name = UnitName("npc") or UnitName("target")
             local blacklist = OZAIO_CONFIG["quest.skip_gossip_blacklist"] or {}
             local is_blacklisted = false
-            if npc_name and npc_name ~= "" then
-                local lower_npc = string.lower(npc_name)
+            if npc_name ~= "" then
                 for bl_key, enabled in pairs(blacklist) do
-                    if enabled and string.find(lower_npc, string.lower(bl_key), 1, true) then
+                    if enabled and string.find(npc_name, bl_key, 1, true) then
                         is_blacklisted = true
                         break
                     end
