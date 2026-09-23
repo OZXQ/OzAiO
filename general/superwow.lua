@@ -71,18 +71,21 @@ local function apply_autoloot()
     local autoLoot = get_sw_config("superwow.auto_loot", true)
 
     if shiftLoot then
+        local last_shift = nil
         autoloot_frame = CreateFrame("Frame")
         autoloot_frame:SetScript("OnUpdate", function()
-            if IsShiftKeyDown() then
-                SetAutoloot(1)
-            else
-                SetAutoloot(0)
+            local shift_down = IsShiftKeyDown and IsShiftKeyDown()
+            if shift_down ~= last_shift then
+                last_shift = shift_down
+                if SetAutoloot then
+                    SetAutoloot(shift_down and 1 or 0)
+                end
             end
         end)
     elseif autoLoot then
-        SetAutoloot(1)
+        if SetAutoloot then SetAutoloot(1) end
     else
-        SetAutoloot(0)
+        if SetAutoloot then SetAutoloot(0) end
     end
 end
 
@@ -148,10 +151,12 @@ local function set_uncapped_sound(enabled)
 end
 
 local function set_clickthrough(enabled)
-    if enabled then
-        Clickthrough(1)
-    else
-        Clickthrough(0)
+    if Clickthrough then
+        if enabled then
+            Clickthrough(1)
+        else
+            Clickthrough(0)
+        end
     end
     OZAIO_CONFIG["superwow.click_through"] = enabled
 end
@@ -196,8 +201,15 @@ local orig_questlog_click      = QuestLogTitleButton_OnClick
 -- Build a chat link for a spell ID; "enchant:" is used because the Vanilla
 -- client cannot natively render "spell:" links (SetItemRef rewrites them).
 local function get_spell_link(id)
-    local spellname = SpellInfo(id)
+    local spellname = SpellInfo and SpellInfo(id)
+    if not spellname then return "" end
     return "\124cffffffff\124Henchant:" .. id .. "\124h[" .. spellname .. "]\124h\124r"
+end
+
+local function pre_spell_link_ref(link, text, button)
+    if link and string.find(link, "spell:") then
+        return string.gsub(link, "spell:", "enchant:"), text, button
+    end
 end
 
 local function install_api_hooks()
@@ -207,30 +219,36 @@ local function install_api_hooks()
             and ChatFrameEditBox and ChatFrameEditBox:IsVisible()
             and (not MacroFrame or not MacroFrame:IsVisible()) then
             if SpellBook_GetSpellID then
-                local bookId = SpellBook_GetSpellID(this:GetID())
-                local _, _, spellID = GetSpellName(bookId, SpellBookFrame.bookType)
-                if spellID then
-                    ChatFrameEditBox:Insert(get_spell_link(spellID))
-                    return
+                local btn = this
+                local btn_id = btn and btn.GetID and btn:GetID()
+                if btn_id then
+                    local bookId = SpellBook_GetSpellID(btn_id)
+                    local _, _, spellID = GetSpellName(bookId, SpellBookFrame.bookType)
+                    if spellID then
+                        local slink = get_spell_link(spellID)
+                        if slink ~= "" then
+                            ChatFrameEditBox:Insert(slink)
+                            return
+                        end
+                    end
                 end
             end
         end
-        orig_spellbutton_click(drag)
-    end
-
-    -- Spell links render as "enchant:" so tooltips show on click
-    local function pre_spell_link_ref(link, text, button)
-        if link and string.find(link, "spell:") then
-            return string.gsub(link, "spell:", "enchant:"), text, button
+        if orig_spellbutton_click then
+            orig_spellbutton_click(drag)
         end
     end
+
     OzHook:hook("SetItemRef", pre_spell_link_ref)
 
     -- Item buttons: keep base counts, but render SuperWoW's special negative
     -- counts yellow with "*" beyond -999
     SetItemButtonCount = function(button, count)
-        if not button or not count then
-            return orig_set_item_count(button, count)
+        if not button or not count or not orig_set_item_count then
+            if orig_set_item_count then
+                return orig_set_item_count(button, count)
+            end
+            return
         end
         if count < 0 then
             local countText = button:GetName() and getglobal(button:GetName() .. "Count")
@@ -252,8 +270,10 @@ local function install_api_hooks()
     if orig_questlog_click then
         QuestLogTitleButton_OnClick = function(button)
             local offset = (FauxScrollFrame_GetOffset and QuestLogListScrollFrame) and FauxScrollFrame_GetOffset(QuestLogListScrollFrame) or 0
-            local questIndex = this:GetID() + offset
-            if IsShiftKeyDown() and not this.isHeader
+            local btn = this or button
+            local btn_id = (btn and btn.GetID) and btn:GetID() or 0
+            local questIndex = btn_id + offset
+            if IsShiftKeyDown() and btn and not btn.isHeader
                 and ChatFrameEditBox and ChatFrameEditBox:IsVisible() then
                 local questLink = nil
                 -- SuperWoW 2.2+ native quest link API

@@ -18,38 +18,64 @@ if LOCALE == "zhCN" then
 end
 
 local dodge_frames = {
-    MainMenuBarArtFrame,
-    MultiBarBottomLeft,
-    MultiBarBottomRight,
-    PetActionBarFrame,
-    ShapeshiftBarFrame,
+    "MainMenuBarArtFrame",
+    "MultiBarBottomLeft",
+    "MultiBarBottomRight",
+    "PetActionBarFrame",
+    "ShapeshiftBarFrame",
 }
 
+local last_top = nil
+
+local function is_pfui_active()
+    return type(pfUI) == "table" or (IsAddOnLoaded and IsAddOnLoaded("pfUI"))
+end
+
 local function update_position()
+    if is_pfui_active() then return end
+    if not ChatFrameEditBox then return end
+
     local top = 0
-    for _, frame in ipairs(dodge_frames) do
+    for _, name in ipairs(dodge_frames) do
+        local frame = getglobal(name)
         if frame and frame:IsVisible() and frame:GetTop() then
             top = math.max(top, frame:GetTop())
         end
     end
+
+    if top == last_top then return end
+    last_top = top
+
+    ChatFrameEditBox:ClearAllPoints()
     ChatFrameEditBox:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, top)
+    ChatFrameEditBox:SetWidth(300)
 end
 
 local function enable_editbox()
-    ChatFrameEditBox:ClearAllPoints()
-    ChatFrameEditBox:SetWidth(300)
+    if not ChatFrameEditBox then return end
     ChatFrameEditBox:SetAltArrowKeyMode(false)
-    OzHook:hook("UIParent_ManageFramePositions", nil, update_position)
-    update_position()
+
+    if not is_pfui_active() then
+        last_top = nil
+        ChatFrameEditBox:ClearAllPoints()
+        ChatFrameEditBox:SetWidth(300)
+        OzHook:hook("UIParent_ManageFramePositions", nil, update_position)
+        update_position()
+    end
 end
 
 local function disable_editbox()
-    OzHook:unhook("UIParent_ManageFramePositions", update_position)
+    if not ChatFrameEditBox then return end
     ChatFrameEditBox:SetAltArrowKeyMode(true)
-    ChatFrameEditBox:ClearAllPoints()
-    if DEFAULT_CHAT_FRAME then
-        ChatFrameEditBox:SetPoint("TOPLEFT", DEFAULT_CHAT_FRAME, "BOTTOMLEFT", -5, -2)
-        ChatFrameEditBox:SetPoint("TOPRIGHT", DEFAULT_CHAT_FRAME, "BOTTOMRIGHT", 5, -2)
+
+    if not is_pfui_active() then
+        OzHook:unhook("UIParent_ManageFramePositions", update_position)
+        last_top = nil
+        ChatFrameEditBox:ClearAllPoints()
+        if DEFAULT_CHAT_FRAME then
+            ChatFrameEditBox:SetPoint("TOPLEFT", DEFAULT_CHAT_FRAME, "BOTTOMLEFT", -5, -2)
+            ChatFrameEditBox:SetPoint("TOPRIGHT", DEFAULT_CHAT_FRAME, "BOTTOMRIGHT", 5, -2)
+        end
     end
 end
 
@@ -61,9 +87,9 @@ module = OzFramework:registerMod({
     title = L["EditBox Tweaks"],
     category = "Chat",
     order = 6,
-    enabled = true,
+    enabled = false,
     config = {
-        ["chat.editbox_tweak"] = true,
+        ["chat.editbox_tweak"] = false,
     },
     config_ui_creator = {
         {

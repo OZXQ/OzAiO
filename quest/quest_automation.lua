@@ -29,16 +29,7 @@ if LOCALE == "zhCN" then
     "零奖励或唯一奖励任务会自动交付。多选一装备奖励会暂停由玩家自选，确保不选错装备。"
 end
 
-local whitelist_npc = {}
-if LOCALE == "zhCN" then
-    whitelist_npc = {
-        "黛西"
-    }
-elseif LOCALE == "enUS" then
-    whitelist_npc = {
-        "Daisy"
-    }
-end
+local whitelist_npc = { "黛西", "Daisy" }
 
 -- ==================== State & Cache ====================
 
