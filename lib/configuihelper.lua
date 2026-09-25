@@ -1,478 +1,233 @@
 -- OzUIHelper: automatic-layout UI helpers for WoW 1.12
---
--- Widgets self-size where possible. Flow layout auto-wraps.
---   flow:add(widget)           -- uses widget._layout for size
---   flow:add(widget, 100, 20)  -- explicit size (backward compat)
+-- Versioned widget factory and layout engine for OzAiO and embedded addons.
 
-local MAJOR = "OzUIHelper-1.0"
-local MINOR = 1
+local MAJOR, MINOR = "OzUIHelper-1.0", 3
+local _G = getfenv(0)
+if not _G.OzLib then _G.OzLib = {} end
+local Master = _G.OzLib
 
-if OzUIHelper and OzUIHelper.version and OzUIHelper.version >= MINOR then
-    return
+local active = Master[MAJOR]
+if active and active.version >= MINOR then return end
+
+local lib = active or _G.OzUIHelper or { _id = 0 }
+lib.version = MINOR
+Master[MAJOR], _G.OzUIHelper = lib, lib
+local OzUIHelper = lib
+
+-- ==================== Factory & Config ====================
+function lib:New(addonName)
+    return setmetatable({ addonName = addonName or "OzUI", _id = 0 }, { __index = self })
 end
 
-OzUIHelper                 = OzUIHelper or { _id = 0 }
-OzUIHelper.version         = MINOR
+lib.GetInstance = lib.New
 
--- ==================== Typography (font objects) ====================
+function lib:SetAddonName(addonName)
+    self.addonName = addonName
+end
 
-OzUIHelper.Fonts           = {
-    normal = "GameFontNormal",
-    small  = "GameFontNormalSmall",
-    large  = "GameFontNormalLarge",
-    huge   = "GameFontNormalHuge",
-}
+function lib:nextName(prefix, addonName)
+    self._id = (self._id or 0) + 1
+    return (addonName or self.addonName or "OzUI") .. "_" .. (prefix or "W") .. "_" .. self._id
+end
 
--- ==================== Theme (visual) ====================
+local function mkBackdrop(bg, edge, es, insets)
+    return {
+        bgFile = bg,
+        edgeFile = edge,
+        tile = true,
+        tileSize = 16,
+        edgeSize = es,
+        insets = { left = insets, right = insets, top = insets, bottom = insets }
+    }
+end
+local TT_BG         = "Interface\\Tooltips\\UI-Tooltip-Background"
+local TT_BD         = "Interface\\Tooltips\\UI-Tooltip-Border"
 
-OzUIHelper.Theme           = {
+lib.Fonts           = { normal = "GameFontNormal", small = "GameFontNormalSmall", large = "GameFontNormalLarge", huge =
+"GameFontNormalHuge" }
+lib.Theme           = {
     backdrop = {
-        widget = {
-            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = true,
-            tileSize = 16,
-            edgeSize = 1,
-            insets = { left = 2, right = 2, top = 2, bottom = 2 }
-        },
-        panel = {
-            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = true,
-            tileSize = 16,
-            edgeSize = 8,
-            insets = { left = 3, right = 3, top = 3, bottom = 3 }
-        },
-        blizaad = {
-            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = true,
-            tileSize = 16,
-            edgeSize = 16,
-            insets = { left = 3, right = 3, top = 3, bottom = 3 }
-        },
-        flat = {
-            bgFile = "Interface\\Buttons\\WHITE8X8",
-            edgeFile = "Interface\\Buttons\\WHITE8X8",
-            tile = false,
-            edgeSize = 1,
-            insets = { left = 1, right = 1, top = 1, bottom = 1 }
-        },
-        dropdownItem = {
-            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = true,
-            tileSize = 16,
-            edgeSize = 1,
-            insets = { left = 2, right = 2, top = 2, bottom = 2 }
-        },
+        widget       = mkBackdrop(TT_BG, TT_BD, 1, 2),
+        panel        = mkBackdrop(TT_BG, TT_BD, 8, 3),
+        blizaad      = mkBackdrop(TT_BG, TT_BD, 16, 3),
+        dropdownItem = mkBackdrop(TT_BG, TT_BD, 1, 2),
+        flat         = { bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1, insets = { left = 1, right = 1, top = 1, bottom = 1 } }
     },
-
     color = {
         widget        = { bg = { 0.05, 0.05, 0.05, 0.8 }, border = { 0.3, 0.3, 0.3, 0.8 } },
         panel         = { bg = { 0.05, 0.05, 0.08, 0.6 }, border = { 0.2, 0.2, 0.3, 0.5 } },
         dropdownItem  = { bg = { 0.05, 0.05, 0.05, 0.8 }, border = { 0.15, 0.15, 0.15, 0.3 } },
         dropdownHover = { bg = { 0.2, 0.2, 0.3, 0.9 }, border = { 0.4, 0.4, 0.6, 0.8 } },
     },
-
-    dropdown = {
-        height       = 20,
-        minWidth     = 80,
-        padding      = 5,
-        arrowPadding = 5,
-        menuPadX     = 2,
-        menuPadY     = 2,
-        itemHeight   = 18,
-        itemSpacing  = 0,
-        labelGap     = 6,
-    },
+    dropdown = { height = 20, minWidth = 80, padding = 5, arrowPadding = 5, menuPadX = 2, menuPadY = 2, itemHeight = 18, itemSpacing = 0, labelGap = 6 }
 }
 
--- Backward-compat aliases
-OzUIHelper.BlizaadBackdrop = OzUIHelper.Theme.backdrop.blizaad
-OzUIHelper.PFUIBackdrop    = OzUIHelper.Theme.backdrop.flat
+lib.BlizaadBackdrop = lib.Theme.backdrop.blizaad
+lib.PFUIBackdrop    = lib.Theme.backdrop.flat
 
--- ==================== Metrics (layout sizes) ====================
-
-OzUIHelper.Metrics         = {
-    -- General defaults
-    padding     = 4,
-    spacing     = 2,
+lib.Metrics         = {
+    padding = 4,
+    spacing = 2,
     lineSpacing = 1,
-
-    -- Widget-level sizes
-    widgetH     = 18,
-    editBoxW    = 60,
-    editBoxH    = 18,
-    buttonW     = 90,
-    buttonH     = 20,
+    widgetH = 18,
+    editBoxW = 60,
+    editBoxH = 18,
+    buttonW = 90,
+    buttonH = 20,
     checkboxGap = 4,
-    labelGap    = 6,
-
-    -- Scrollable item list
-    list        = {
-        rowH              = 22,
-        contentRightInset = 20,
-        rowPadX           = 5,
-        rowPadTop         = 2,
-        rowPadBottom      = 4,
-        namePadX          = 2,
-        qtyPadX           = 2,
-        qtyGap            = 8,
-    },
-
-    -- Config dialog (framework-level)
-    dialog      = {
-        width  = 500,
+    labelGap = 6,
+    list    = { rowH = 22, contentRightInset = 20, rowPadX = 5, rowPadTop = 2, rowPadBottom = 4, namePadX = 2, qtyPadX = 2, qtyGap = 8 },
+    dialog  = {
+        width = 500,
         height = 600,
-        header = {
-            height = 48,
-            insetL = 11,
-            insetR = 12,
-            insetT = 12,
-        },
-        main   = {
-            margin       = 15,
-            topOffset    = -64,
-            bottomOffset = 15,
-            gap          = 5,
-        },
-        tab    = {
-            width   = 120,
-            btnW    = 100,
-            btnH    = 16,
-            flowPad = 16,
-        },
-        scroll = {
-            step = 22,
-        },
+        header = { height = 48, insetL = 11, insetR = 12, insetT = 12 },
+        main   = { margin = 15, topOffset = -64, bottomOffset = 15, gap = 5 },
+        tab    = { width = 120, btnW = 100, btnH = 16, flowPad = 16 },
+        scroll = { step = 22 }
     },
-
-    -- Minimap button
-    minimap     = {
-        btnSize     = 32,
-        radius      = 80,
-        iconSize    = 21,
-        iconOffX    = 7,
-        iconOffY    = -6,
-        overlaySize = 56,
-        texCoord    = { 0.075, 0.925, 0.075, 0.925 },
-    },
+    minimap = { btnSize = 32, radius = 80, iconSize = 21, iconOffX = 7, iconOffY = -6, overlaySize = 56, texCoord = { 0.075, 0.925, 0.075, 0.925 } }
 }
-
--- Legacy THEME local for backward compat (referenced by older code)
-local M                    = OzUIHelper.Metrics
+local M             = lib.Metrics
 
 -- ==================== Utility ====================
-
-function OzUIHelper:applyBackdrop(frame, style)
+function lib:applyBackdrop(f, style)
     local s = style or "widget"
-    local bd = self.Theme.backdrop[s]
-    if bd then frame:SetBackdrop(bd) end
-    local c = self.Theme.color[s]
+    local bd, c = self.Theme.backdrop[s], self.Theme.color[s]
+    if bd then f:SetBackdrop(bd) end
     if c then
-        frame:SetBackdropColor(unpack(c.bg))
-        frame:SetBackdropBorderColor(unpack(c.border))
+        f:SetBackdropColor(unpack(c.bg)); f:SetBackdropBorderColor(unpack(c.border))
     end
 end
 
-function OzUIHelper:setSize(widget, w, h)
-    widget:SetWidth(w)
-    widget:SetHeight(h)
-    widget._layout = { width = w, height = h }
+function lib:setSize(w, width, height)
+    w:SetWidth(width); w:SetHeight(height)
+    w._layout = { width = width, height = height }
 end
 
-function OzUIHelper:nextName(prefix)
-    self._id = self._id + 1
-    return "OZAIO_" .. (prefix or "W") .. "_" .. self._id
+local tooltip
+local function getTooltip()
+    if not tooltip then
+        tooltip = CreateFrame("Frame", "OzUITooltip", UIParent)
+        tooltip:SetFrameStrata("TOOLTIP"); tooltip:SetClampedToScreen(true)
+        tooltip:SetBackdrop(mkBackdrop(TT_BG, TT_BD, 16, 5))
+        tooltip:SetBackdropColor(0, 0, 0, 0.9); tooltip:SetBackdropBorderColor(0.8, 0.8, 0.8, 1)
+        tooltip.title = tooltip:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        tooltip.title:SetPoint("TOPLEFT", 10, -10); tooltip.title:SetTextColor(1, 0.82, 0); tooltip.title:SetJustifyH(
+        "LEFT")
+        tooltip.desc = tooltip:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+        tooltip.desc:SetPoint("TOPLEFT", tooltip.title, "BOTTOMLEFT", 0, -4); tooltip.desc:SetTextColor(0.85, 0.85, 0.85); tooltip
+            .desc:SetJustifyH("LEFT")
+        tooltip:Hide()
+    end
+    return tooltip
 end
 
-local oz_tooltip = nil
+function lib:showTooltip(owner, title, text, anchor)
+    if not owner or ((not title or title == "") and (not text or text == "")) then return end
+    local tt = getTooltip()
+    if GameTooltip and GameTooltip:IsShown() then GameTooltip:Hide() end
 
-local function get_oz_tooltip()
-    if not oz_tooltip then
-        local frame = CreateFrame("Frame", "OzUITooltip", UIParent)
-        frame:SetFrameStrata("TOOLTIP")
-        frame:SetClampedToScreen(true)
-        frame:SetBackdrop({
-            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = true,
-            tileSize = 16,
-            edgeSize = 16,
-            insets = { left = 5, right = 5, top = 5, bottom = 5 }
-        })
-        frame:SetBackdropColor(0, 0, 0, 0.9)
-        frame:SetBackdropBorderColor(0.8, 0.8, 0.8, 1)
+    tt.title:SetText(title or ""); if title and title ~= "" then tt.title:Show() else tt.title:Hide() end
+    tt.desc:SetText(text or ""); if text and text ~= "" then tt.desc:Show() else tt.desc:Hide() end
 
-        local title = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-        title:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -10)
-        title:SetTextColor(1, 0.82, 0)
-        title:SetJustifyH("LEFT")
+    local tw = title and tt.title:GetStringWidth() or 0
+    local dw = text and tt.desc:GetStringWidth() or 0
+    local maxW = math.min(280, math.max(tw, dw, 60))
+    tt.title:SetWidth(maxW); tt.desc:SetWidth(maxW)
 
-        local desc = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-        desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -4)
-        desc:SetTextColor(0.85, 0.85, 0.85)
-        desc:SetJustifyH("LEFT")
+    local th = title and (math.max(1, math.ceil(tw / 270)) * 14) or 0
+    local _, nl = string.gsub(text or "", "\n", "")
+    local dh = text and (math.max(1 + nl, math.ceil(dw / 270) + nl) * 13) or 0
 
-        frame.title = title
-        frame.desc = desc
-        frame:Hide()
-        oz_tooltip = frame
-    end
-    return oz_tooltip
-end
-
-function OzUIHelper:showTooltip(owner, title, text, anchor)
-    if not owner then return end
-    local tt = get_oz_tooltip()
-    if not tt then return end
-
-    if GameTooltip and GameTooltip:IsShown() then
-        GameTooltip:Hide()
-    end
-
-    local hasTitle = (title and title ~= "")
-    local hasDesc  = (text and text ~= "")
-
-    if not hasTitle and not hasDesc then
-        tt:Hide()
-        return
-    end
-
-    -- Reset width constraints so GetStringWidth measures unconstrained text
-    tt.title:SetWidth(0)
-    tt.desc:SetWidth(0)
-
-    if hasTitle then
-        tt.title:SetText(title)
-        tt.title:Show()
-    else
-        tt.title:SetText("")
-        tt.title:Hide()
-    end
-
-    if hasDesc then
-        tt.desc:SetText(text)
-        tt.desc:Show()
-    else
-        tt.desc:SetText("")
-        tt.desc:Hide()
-    end
-
-    local tw = hasTitle and (tt.title:GetStringWidth() or 0) or 0
-    local dw = hasDesc and (tt.desc:GetStringWidth() or 0) or 0
-    local maxTextW = math.max(tw, dw)
-
-    if maxTextW > 280 then
-        maxTextW = 280
-    end
-
-    local finalW = maxTextW + 20
-    if finalW < 80 then finalW = 80 end
-
-    -- Apply width constraint for word wrapping
-    if hasTitle then
-        tt.title:SetWidth(maxTextW)
-        tt.title:ClearAllPoints()
-        tt.title:SetPoint("TOPLEFT", tt, "TOPLEFT", 10, -10)
-    end
-
-    if hasDesc then
-        tt.desc:SetWidth(maxTextW)
-        tt.desc:ClearAllPoints()
-        if hasTitle then
-            tt.desc:SetPoint("TOPLEFT", tt.title, "BOTTOMLEFT", 0, -4)
-        else
-            tt.desc:SetPoint("TOPLEFT", tt, "TOPLEFT", 10, -10)
-        end
-    end
-
-    -- Calculate heights
-    local th = 0
-    if hasTitle then
-        th = (tt.title.GetHeight and tt.title:GetHeight()) or 14
-        if tw > 270 then
-            local lines = math.ceil(tw / 270)
-            th = math.max(th, lines * 14)
-        end
-        if th <= 0 then th = 14 end
-    end
-
-    local dh = 0
-    if hasDesc then
-        dh = (tt.desc.GetHeight and tt.desc:GetHeight()) or 12
-        local _, nl = string.gsub(text, "\n", "")
-        local newlines = nl or 0
-        local lines = 1 + newlines
-        if dw > 270 then
-            lines = math.max(lines, math.ceil(dw / 270) + newlines)
-        end
-        dh = math.max(dh, lines * 13)
-        if dh <= 0 then dh = 12 end
-    end
-
-    local finalH = 20 + th + dh
-    if hasTitle and hasDesc then
-        finalH = finalH + 4
-    end
-
-    tt:SetWidth(finalW)
-    tt:SetHeight(finalH)
-
-    if owner.GetFrameLevel then
-        tt:SetFrameLevel(owner:GetFrameLevel() + 25)
-    end
+    tt:SetWidth(maxW + 20); tt:SetHeight(24 + th + dh)
+    if owner.GetFrameLevel then tt:SetFrameLevel(owner:GetFrameLevel() + 25) end
 
     tt:ClearAllPoints()
-    local a = anchor or "ANCHOR_TOPLEFT"
-    if a == "ANCHOR_TOPLEFT" then
-        tt:SetPoint("BOTTOMLEFT", owner, "TOPLEFT", 0, 4)
-    elseif a == "ANCHOR_LEFT" then
-        tt:SetPoint("RIGHT", owner, "LEFT", -4, 0)
-    elseif a == "ANCHOR_RIGHT" then
-        tt:SetPoint("LEFT", owner, "RIGHT", 4, 0)
-    elseif a == "ANCHOR_BOTTOMLEFT" then
-        tt:SetPoint("TOPLEFT", owner, "BOTTOMLEFT", 0, -4)
-    elseif a == "ANCHOR_TOPRIGHT" then
-        tt:SetPoint("BOTTOMRIGHT", owner, "TOPRIGHT", 0, 4)
-    else
-        tt:SetPoint("BOTTOMLEFT", owner, "TOPLEFT", 0, 4)
-    end
-
+    local anchors = {
+        ANCHOR_LEFT       = { "RIGHT", owner, "LEFT", -4, 0 },
+        ANCHOR_RIGHT      = { "LEFT", owner, "RIGHT", 4, 0 },
+        ANCHOR_BOTTOMLEFT = { "TOPLEFT", owner, "BOTTOMLEFT", 0, -4 },
+        ANCHOR_TOPRIGHT   = { "BOTTOMRIGHT", owner, "TOPRIGHT", 0, 4 },
+    }
+    local a = anchors[anchor] or { "BOTTOMLEFT", owner, "TOPLEFT", 0, 4 }
+    tt:SetPoint(a[1], a[2], a[3], a[4], a[5])
     tt:Show()
 end
 
-function OzUIHelper:hideTooltip()
-    if oz_tooltip then
-        oz_tooltip:Hide()
-    end
+function lib:hideTooltip()
+    if tooltip then tooltip:Hide() end
 end
 
 -- ==================== Flow Layout ====================
-
-function OzUIHelper:createFlow(parent, opts)
-    local p, sp, ls
-    if type(opts) == "number" then
-        p = opts; sp = self.Metrics.spacing; ls = self.Metrics.lineSpacing
-    elseif type(opts) == "table" then
-        p  = opts.padding or self.Metrics.padding
-        sp = opts.spacing or self.Metrics.spacing
-        ls = opts.lineSpacing or self.Metrics.lineSpacing
-    else
-        p = self.Metrics.padding; sp = self.Metrics.spacing; ls = self.Metrics.lineSpacing
-    end
-
-    return {
-        parent      = parent,
-        x           = p,
-        y           = -p,
-        startX      = p,
-        padding     = p,
-        spacing     = sp,
-        lineSpacing = ls,
-        lineHeight  = 0,
-        items       = {},
-        -- Model A: maxWidth is the right edge of the usable area, not the
-        -- available width; x already starts at the left padding, so a
-        -- full-width row uses (maxWidth - padding)
-        maxWidth    = parent:GetWidth() - p,
-    }
+function lib:createFlow(parent, opts)
+    local p = type(opts) == "number" and opts or (type(opts) == "table" and opts.padding) or self.Metrics.padding
+    local sp = (type(opts) == "table" and opts.spacing) or self.Metrics.spacing
+    local ls = (type(opts) == "table" and opts.lineSpacing) or self.Metrics.lineSpacing
+    return { parent = parent, x = p, y = -p, startX = p, padding = p, spacing = sp, lineSpacing = ls, lineHeight = 0, items = {}, maxWidth =
+    parent:GetWidth() - p }
 end
 
-function OzUIHelper:add(flow, widget, width, height)
+function lib:add(flow, widget, width, height)
     if not flow or not widget then return end
+    local w = width or (widget._layout and widget._layout.width) or (widget.GetWidth and widget:GetWidth()) or M.buttonW
+    local h = height or (widget._layout and widget._layout.height) or (widget.GetHeight and widget:GetHeight()) or
+    M.widgetH
 
-    local w = width or (widget._layout and widget._layout.width)
-        or (widget.GetWidth and widget:GetWidth())
-        or M.buttonW
-    local h = height or (widget._layout and widget._layout.height)
-        or (widget.GetHeight and widget:GetHeight())
-        or M.widgetH
-
-    -- No automatic wrapping: a new line starts only when the caller calls
-    -- OzUIHelper:newLine(flow) explicitly, so multi-widget rows stay on one
-    -- line even when they overflow the panel width.
     widget:ClearAllPoints()
     widget:SetPoint("TOPLEFT", flow.parent, "TOPLEFT", flow.x, flow.y)
-    -- Apply the allocated row height so FontStrings actually get the space
-    -- callers reserve for them; MIDDLE justification then centers the text
-    -- the same way an EditBox centers its own text.
     if h and widget.SetHeight then widget:SetHeight(h) end
     if widget.SetJustifyV then widget:SetJustifyV("MIDDLE") end
 
     flow.x = flow.x + w + flow.spacing
-    if h > flow.lineHeight then
-        flow.lineHeight = h
-    end
-
+    if h > flow.lineHeight then flow.lineHeight = h end
     table.insert(flow.items, { widget = widget, width = w, height = h })
 end
 
-function OzUIHelper:newLine(flow)
+function lib:newLine(flow)
     if not flow then return end
-    flow.x = flow.startX
-    flow.y = flow.y - flow.lineHeight - flow.lineSpacing
-    flow.lineHeight = 0
-    table.insert(flow.items, { newLine = true })
+    flow.x = flow.startX; flow.y = flow.y - flow.lineHeight - flow.lineSpacing
+    flow.lineHeight = 0; table.insert(flow.items, { newLine = true })
 end
 
-function OzUIHelper:rebuildFlow(flow)
+function lib:rebuildFlow(flow)
     if not flow or type(flow.items) ~= "table" then return end
-    -- flow.items is the permanent layout description; replay it into a fresh
-    -- table so rebuilds don't mutate the list they are iterating
     local saved = flow.items
-    flow.x = flow.startX
-    flow.y = -flow.padding
-    flow.lineHeight = 0
-    flow.items = {}
-    for _, entry in ipairs(saved) do
-        if entry.newLine then
-            self:newLine(flow)
-        else
-            self:add(flow, entry.widget, entry.width, entry.height)
-        end
+    flow.x, flow.y, flow.lineHeight, flow.items = flow.startX, -flow.padding, 0, {}
+    for _, e in ipairs(saved) do
+        if e.newLine then self:newLine(flow) else self:add(flow, e.widget, e.width, e.height) end
     end
 end
 
 -- ==================== Scrollable Panel ====================
-
-function OzUIHelper:createScrollPanel(parent, opts)
+function lib:createScrollPanel(parent, opts)
     local o = opts or {}
-    local p = o.padding or self.Metrics.padding or 8
-    local sp = o.spacing or 4
-    local rsp = o.rowSpacing or 6
-    local step = o.step or (self.Metrics.dialog and self.Metrics.dialog.scroll and self.Metrics.dialog.scroll.step) or 22
+    local p, sp, step = o.padding or 8, o.spacing or 4, o.step or 22
     local rightInset = o.rightInset or 20
 
-    local scrollFrame = CreateFrame("ScrollFrame", self:nextName("ScrollPanel"), parent)
-    self:applyBackdrop(scrollFrame, o.backdropStyle or "panel")
-    scrollFrame:EnableMouseWheel(true)
+    local sf = CreateFrame("ScrollFrame", self:nextName("ScrollPanel"), parent)
+    self:applyBackdrop(sf, o.backdropStyle or "panel")
+    sf:EnableMouseWheel(true)
 
-    local scrollChild = CreateFrame("Frame", self:nextName("ScrollChild"), scrollFrame)
-    scrollFrame:SetScrollChild(scrollChild)
+    local sc = CreateFrame("Frame", self:nextName("ScrollChild"), sf)
+    sf:SetScrollChild(sc)
 
     local panel = {
-        scrollFrame = scrollFrame,
-        scrollChild = scrollChild,
-        padding     = p,
-        spacing     = sp,
-        rowSpacing  = rsp,
-        step        = step,
-        rightInset  = rightInset,
-        currentY    = -p,
-        widgets     = {},
+        scrollFrame = sf,
+        scrollChild = sc,
+        padding = p,
+        spacing = sp,
+        rowSpacing = o.rowSpacing or 4,
+        step = step,
+        rightInset = rightInset,
+        currentY = -p,
+        widgets = {}
     }
 
-    local function updateDimensions()
-        if panel.RelayoutSections then
-            panel:RelayoutSections()
-            return
-        end
-        local sw = scrollFrame:GetWidth()
+    local function updateDim()
+        local sw = sf:GetWidth()
         if sw and sw > panel.rightInset then
             local usableW = sw - panel.rightInset
-            scrollChild:SetWidth(usableW)
+            sc:SetWidth(usableW)
             local innerW = usableW - panel.padding * 2
             if innerW > 0 then
                 for _, w in ipairs(panel.widgets) do
@@ -486,67 +241,44 @@ function OzUIHelper:createScrollPanel(parent, opts)
         panel:UpdateScroll()
     end
 
-    panel.UpdateDimensions = updateDimensions
-
-    scrollFrame:SetScript("OnSizeChanged", function()
-        updateDimensions()
-    end)
-
-    scrollFrame:SetScript("OnMouseWheel", function()
-        local cur = this:GetVerticalScroll()
-        local new = cur - arg1 * panel.step
-        if new < 0 then new = 0 end
-        local maxS = scrollChild:GetHeight() - scrollFrame:GetHeight()
-        if maxS < 0 then maxS = 0 end
-        if new > maxS then new = maxS end
-        this:SetVerticalScroll(new)
+    panel.UpdateDimensions = updateDim
+    sf:SetScript("OnSizeChanged", updateDim)
+    sf:SetScript("OnMouseWheel", function()
+        local cur = this:GetVerticalScroll() - arg1 * panel.step
+        local maxS = math.max(0, sc:GetHeight() - sf:GetHeight())
+        this:SetVerticalScroll(math.max(0, math.min(cur, maxS)))
     end)
 
     function panel:UpdateScroll()
-        local totalH = math.abs(self.currentY) + self.padding
-        local viewH  = scrollFrame:GetHeight() or 0
-        if totalH < viewH then totalH = viewH end
-        scrollChild:SetHeight(totalH)
-
-        local cur = scrollFrame:GetVerticalScroll()
-        local maxS = totalH - viewH
-        if maxS < 0 then maxS = 0 end
-        if cur > maxS then scrollFrame:SetVerticalScroll(maxS) end
+        local totalH = math.max(sf:GetHeight() or 0, math.abs(self.currentY) + self.padding)
+        sc:SetHeight(totalH)
+        local maxS = math.max(0, totalH - (sf:GetHeight() or 0))
+        if sf:GetVerticalScroll() > maxS then sf:SetVerticalScroll(maxS) end
     end
 
     function panel:GetContentHeight()
         return math.abs(self.currentY) + self.padding
     end
 
+    function panel:AddSpace(height)
+        self.currentY = self.currentY - (height or 8)
+        self:UpdateScroll()
+    end
+
     function panel:Add(widget, wOpts)
         if not widget then return end
         local wo = wOpts or {}
-        local h = wo.height or (widget._layout and widget._layout.height)
-            or (widget.GetHeight and widget:GetHeight())
-            or 24
-        if h <= 0 then h = 24 end
-
-        widget:ClearAllPoints()
-        widget:SetParent(scrollChild)
-        widget:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", self.padding, self.currentY)
-
+        local h = wo.height or (widget._layout and widget._layout.height) or (widget.GetHeight and widget:GetHeight()) or
+        24
+        widget:ClearAllPoints(); widget:SetParent(sc)
+        widget:SetPoint("TOPLEFT", sc, "TOPLEFT", self.padding, self.currentY)
         if wo.fullWidth or widget._fullWidth then
             widget._wOptsFullWidth = true
-            local sw = scrollChild:GetWidth()
-            if not sw or sw <= 0 then
-                local sfw = scrollFrame:GetWidth()
-                if sfw and sfw > self.rightInset then
-                    sw = sfw - self.rightInset
-                    scrollChild:SetWidth(sw)
-                end
-            end
-            if sw and sw > self.padding * 2 then
-                local w = sw - self.padding * 2
-                widget:SetWidth(w)
-                if widget._layout then widget._layout.width = w end
+            local w = (sf:GetWidth() or 0) - self.rightInset - self.padding * 2
+            if w > 0 then
+                widget:SetWidth(w); if widget._layout then widget._layout.width = w end
             end
         end
-
         self.currentY = self.currentY - h - self.spacing
         table.insert(self.widgets, widget)
         self:UpdateScroll()
@@ -557,145 +289,86 @@ function OzUIHelper:createScrollPanel(parent, opts)
         if not rowWidgets or table.getn(rowWidgets) == 0 then return end
         local x = self.padding
         local maxH = 0
+        local spacing = (rOpts and rOpts.rowSpacing) or 8
 
-        for _, widget in ipairs(rowWidgets) do
-            local w = widget._layout and widget._layout.width
-            if not w or w <= 0 then
-                w = (widget.GetStringWidth and widget:GetStringWidth())
-                if not w or w <= 0 then
-                    w = (widget.GetWidth and widget:GetWidth())
-                end
-            end
-            if not w or w <= 0 then w = 100 end
-
-            local h = widget._layout and widget._layout.height
-            if not h or h <= 0 then
-                h = (widget.GetHeight and widget:GetHeight())
-            end
-            if not h or h <= 0 then h = 24 end
-
-            if h > maxH then maxH = h end
-
-            widget:ClearAllPoints()
-            widget:SetParent(scrollChild)
-            widget:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x, self.currentY)
-
-            x = x + w + self.rowSpacing
-            table.insert(self.widgets, widget)
+        for _, w in ipairs(rowWidgets) do
+            local width = (w._layout and w._layout.width) or (w.GetStringWidth and w:GetStringWidth()) or
+            (w.GetWidth and w:GetWidth()) or 100
+            local height = (w._layout and w._layout.height) or (w.GetHeight and w:GetHeight()) or 20
+            w:ClearAllPoints(); w:SetParent(sc)
+            w:SetPoint("TOPLEFT", sc, "TOPLEFT", x, self.currentY)
+            x = x + width + spacing
+            if height > maxH then maxH = height end
+            table.insert(self.widgets, w)
         end
-
-        if maxH <= 0 then maxH = 24 end
         self.currentY = self.currentY - maxH - self.spacing
-        self:UpdateScroll()
-        return rowWidgets
-    end
-
-    function panel:AddSpace(height)
-        local h = height or self.spacing
-        self.currentY = self.currentY - h
         self:UpdateScroll()
     end
 
     function panel:Clear()
-        for _, w in ipairs(self.widgets) do
-            if w.Hide then w:Hide() end
-        end
-        self.widgets = {}
-        self.currentY = -self.padding
-        scrollFrame:SetVerticalScroll(0)
-        self:UpdateScroll()
+        for _, w in ipairs(self.widgets) do if w.Hide then w:Hide() end end
+        self.widgets = {}; self.currentY = -self.padding
+        sf:SetVerticalScroll(0); self:UpdateScroll()
     end
 
     return panel
 end
 
--- ==================== Unified Resize ====================
--- All OnSizeChanged registrations chain through onResize() so attachResize()
--- and onResize() compose instead of clobbering each other. Chained handlers
--- get the current size passed explicitly; callbacks receive (frame, w, h).
+-- ==================== Layout & Primitives ====================
+function lib:anchor(w, parent, point, relPoint, x, y)
+    w:SetPoint(point or "TOPLEFT", parent, relPoint or point or "TOPLEFT", x or 0, y or 0)
+end
 
-function OzUIHelper:onResize(frame, callback)
+function lib:dock(w, parent, side, size, pad)
+    w:ClearAllPoints(); local p = pad or 0
+    if side == "top" then
+        self:anchor(w, parent, "TOPLEFT", "TOPLEFT", p, -p); self:anchor(w, parent, "TOPRIGHT", "TOPRIGHT", -p, -p); w
+            :SetHeight(size)
+    elseif side == "bottom" then
+        self:anchor(w, parent, "BOTTOMLEFT", "BOTTOMLEFT", p, p); self:anchor(w, parent, "BOTTOMRIGHT", "BOTTOMRIGHT", -
+        p, p); w:SetHeight(size)
+    elseif side == "left" then
+        self:anchor(w, parent, "TOPLEFT", "TOPLEFT", p, -p); self:anchor(w, parent, "BOTTOMLEFT", "BOTTOMLEFT", p, p); w
+            :SetWidth(size)
+    elseif side == "right" then
+        self:anchor(w, parent, "TOPRIGHT", "TOPRIGHT", -p, -p); self:anchor(w, parent, "BOTTOMRIGHT", "BOTTOMRIGHT", -p,
+            p); w:SetWidth(size)
+    end
+end
+
+function lib:makeMovable(f)
+    f:SetMovable(true); f:EnableMouse(true); f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", function() this:StartMoving() end)
+    f:SetScript("OnDragStop", function() this:StopMovingOrSizing() end)
+end
+
+function lib:onResize(frame, callback)
     local old = frame:GetScript("OnSizeChanged")
     frame:SetScript("OnSizeChanged", function()
-        local width  = this:GetWidth()
-        local height = this:GetHeight()
-        if old then old(width, height) end
-        if callback then callback(this, width, height) end
+        if old then old() end
+        callback(this, this:GetWidth(), this:GetHeight())
     end)
 end
 
-function OzUIHelper:attachResize(frame, flow)
+function lib:attachResize(frame, flow)
     self:onResize(frame, function(f, width)
-        -- Model A: maxWidth is the right edge of the usable area
         flow.maxWidth = width - flow.padding
         self:rebuildFlow(flow)
     end)
 end
 
--- ==================== Layout Helpers ====================
-
-function OzUIHelper:anchor(widget, parent, point, relPoint, x, y)
-    widget:SetPoint(point or "TOPLEFT", parent, relPoint or point or "TOPLEFT", x or 0, y or 0)
-end
-
-function OzUIHelper:dock(widget, parent, side, size, pad)
-    widget:ClearAllPoints()
-    local p = pad or 0
-    if side == "top" then
-        self:anchor(widget, parent, "TOPLEFT", "TOPLEFT", p, -p)
-        self:anchor(widget, parent, "TOPRIGHT", "TOPRIGHT", -p, -p)
-        widget:SetHeight(size)
-    elseif side == "bottom" then
-        self:anchor(widget, parent, "BOTTOMLEFT", "BOTTOMLEFT", p, p)
-        self:anchor(widget, parent, "BOTTOMRIGHT", "BOTTOMRIGHT", -p, p)
-        widget:SetHeight(size)
-    elseif side == "left" then
-        self:anchor(widget, parent, "TOPLEFT", "TOPLEFT", p, -p)
-        self:anchor(widget, parent, "BOTTOMLEFT", "BOTTOMLEFT", p, p)
-        widget:SetWidth(size)
-    elseif side == "right" then
-        self:anchor(widget, parent, "TOPRIGHT", "TOPRIGHT", -p, -p)
-        self:anchor(widget, parent, "BOTTOMRIGHT", "BOTTOMRIGHT", -p, p)
-        widget:SetWidth(size)
-    end
-end
-
-function OzUIHelper:makeMovable(frame)
-    frame:SetMovable(true)
-    frame:EnableMouse(true)
-    frame:RegisterForDrag("LeftButton")
-    -- Native drag: StartMoving/StopMovingOrSizing preserve the frame's
-    -- anchors and adjust offsets; no per-frame cursor math needed
-    frame:SetScript("OnDragStart", function()
-        this:StartMoving()
-    end)
-    frame:SetScript("OnDragStop", function()
-        this:StopMovingOrSizing()
-    end)
-end
-
--- ==================== Primitives ====================
-
-function OzUIHelper:createLabel(parent, text, font)
+function lib:createLabel(parent, text, font)
     local fs = parent:CreateFontString(nil, "ARTWORK", font or self.Fonts.normal)
-    fs:SetText(text or "")
-    -- Vertical center so the text lines up with taller siblings (EditBoxes,
-    -- buttons) on the same flow line instead of hugging the top edge.
-    fs:SetJustifyV("MIDDLE")
-    local h = (fs.GetHeight and fs:GetHeight()) or 14
-    if h <= 0 then h = 14 end
-    self:setSize(fs, (fs.GetStringWidth and fs:GetStringWidth()) or 100, h)
+    fs:SetText(text or ""); fs:SetJustifyV("MIDDLE")
+    self:setSize(fs, fs:GetStringWidth() or 100, fs:GetHeight() > 0 and fs:GetHeight() or 14)
     return fs
 end
 
--- Set a raw font path (file, size, flags) on a FontString
-function OzUIHelper:setFont(fs, font, size, flags)
-    if fs and font then
-        fs:SetFont(font, size, flags)
-    end
+function lib:setFont(fs, font, size, flags)
+    if fs and font then fs:SetFont(font, size, flags) end
 end
 
-function OzUIHelper:createButton(parent, text, onClick, width, height)
+function lib:createButton(parent, text, onClick, width, height)
     local btn = CreateFrame("Button", self:nextName("Btn"), parent, "UIPanelButtonTemplate")
     self:setSize(btn, width or M.buttonW, height or M.buttonH)
     btn:SetText(text or "")
@@ -703,89 +376,56 @@ function OzUIHelper:createButton(parent, text, onClick, width, height)
     return btn
 end
 
-function OzUIHelper:createEditBox(parent, width, height, onEnter)
+function lib:createEditBox(parent, width, height, onEnter)
     local eb = CreateFrame("EditBox", self:nextName("Edit"), parent)
     self:setSize(eb, width or M.editBoxW, height or M.editBoxH)
-    eb:SetAutoFocus(false)
-    if eb.SetFontObject then
-        eb:SetFontObject(GameFontNormal)
-    elseif GameFontNormal and GameFontNormal.GetFont then
-        local font, size, flags = GameFontNormal:GetFont()
-        eb:SetFont(font, size, flags)
-    end
-    if eb.SetTextInsets then
-        eb:SetTextInsets(4, 4, 0, 0)
-    end
+    eb:SetAutoFocus(false); eb:SetFontObject(GameFontNormal)
+    if eb.SetTextInsets then eb:SetTextInsets(4, 4, 0, 0) end
     self:applyBackdrop(eb, "widget")
-    if onEnter then
-        eb:SetScript("OnEnterPressed", function()
-            onEnter(eb:GetText())
-            eb:ClearFocus()
-        end)
-    end
+    if onEnter then eb:SetScript("OnEnterPressed", function()
+            onEnter(eb:GetText()); eb:ClearFocus()
+        end) end
     return eb
 end
 
-function OzUIHelper:createSeparator(parent, width)
+function lib:createSeparator(parent, width)
     local tex = parent:CreateTexture(nil, "ARTWORK")
     tex:SetTexture(1, 1, 1, 0.15)
     self:setSize(tex, width or 300, 1)
+    tex._fullWidth = true
     return tex
 end
 
-function OzUIHelper:createHeader(parent, text)
-    local frame = CreateFrame("Frame", nil, parent)
-    local fs = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    fs:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-    fs:SetText(text or "")
-    fs:SetTextColor(1, 0.82, 0)
-
-    local line = frame:CreateTexture(nil, "ARTWORK")
-    line:SetTexture(1, 1, 1, 0.2)
-    line:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 2)
-    line:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 2)
-    line:SetHeight(1)
-
-    self:setSize(frame, 300, 20)
-    frame._fullWidth = true
-    frame.text = fs
-    frame.line = line
-    return frame
+function lib:createHeader(parent, text)
+    local f = CreateFrame("Frame", nil, parent)
+    local fs = f:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    fs:SetPoint("TOPLEFT", 0, 0); fs:SetText(text or ""); fs:SetTextColor(1, 0.82, 0)
+    local line = f:CreateTexture(nil, "ARTWORK")
+    line:SetTexture(1, 1, 1, 0.2); line:SetPoint("BOTTOMLEFT", 0, 2); line:SetPoint("BOTTOMRIGHT", 0, 2); line:SetHeight(1)
+    self:setSize(f, 300, 20); f._fullWidth, f.text, f.line = true, fs, line
+    return f
 end
 
-function OzUIHelper:createFoldableHeader(parent, text, isFolded, onToggle, locTable)
+function lib:createFoldableHeader(parent, text, isFolded, onToggle, locTable)
     local frame = CreateFrame("Button", self:nextName("FoldHeader"), parent)
     self:setSize(frame, 300, 20)
     frame._fullWidth = true
-    frame:EnableMouse(true)
+    self:applyBackdrop(frame, "flat")
+    frame:SetBackdropColor(0.12, 0.12, 0.15, 0.5)
+    frame:SetBackdropBorderColor(0.25, 0.25, 0.3, 0.6)
 
-    local hl = frame:CreateTexture(nil, "HIGHLIGHT")
-    hl:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
-    hl:SetBlendMode("ADD")
-    hl:SetAllPoints(frame)
-    hl:SetAlpha(0.2)
-
-    local indicator = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    indicator:SetPoint("LEFT", frame, "LEFT", 2, 0)
+    local indicator = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    indicator:SetPoint("LEFT", frame, "LEFT", 6, 0)
 
     local fs = frame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    fs:SetPoint("LEFT", indicator, "RIGHT", 6, 0)
-    fs:SetText(text or "")
-    fs:SetTextColor(1, 0.82, 0)
+    fs:SetPoint("LEFT", indicator, "RIGHT", 6, 0); fs:SetText(text or ""); fs:SetTextColor(1, 0.82, 0)
 
     local hint = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
     hint:SetPoint("RIGHT", frame, "RIGHT", -4, 0)
 
     local line = frame:CreateTexture(nil, "ARTWORK")
-    line:SetTexture(1, 1, 1, 0.2)
-    line:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 2)
-    line:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 2)
-    line:SetHeight(1)
-
-    frame.text = fs
-    frame.indicator = indicator
-    frame.hint = hint
-    frame.line = line
+    line:SetTexture(1, 1, 1, 0.2); line:SetPoint("BOTTOMLEFT", 0, 2); line:SetPoint("BOTTOMRIGHT", 0, 2); line:SetHeight(1)
+    frame.text, frame.indicator, frame.hint, frame.line = fs, indicator, hint, line
 
     local function get_loc(key, fallback)
         if locTable and locTable[key] then return locTable[key] end
@@ -807,167 +447,101 @@ function OzUIHelper:createFoldableHeader(parent, text, isFolded, onToggle, locTa
 
     frame:SetScript("OnEnter", function()
         fs:SetTextColor(1, 1, 1)
-        local tip = this.isFolded and get_loc("Click to expand this section.", "Click to expand this section.")
-            or get_loc("Click to collapse this section.", "Click to collapse this section.")
-        OzUIHelper:showTooltip(this, text, tip, "ANCHOR_TOPLEFT")
+        local tip = this.isFolded and get_loc("Click to expand this section.", "Click to expand this section.") or
+        get_loc("Click to collapse this section.", "Click to collapse this section.")
+        lib:showTooltip(this, text, tip, "ANCHOR_TOPLEFT")
     end)
-
     frame:SetScript("OnLeave", function()
         fs:SetTextColor(1, 0.82, 0)
-        OzUIHelper:hideTooltip()
+        lib:hideTooltip()
     end)
-
     frame:SetScript("OnClick", function()
         if onToggle then onToggle(this) end
-        if this:IsShown() and OzUITooltip and OzUITooltip:IsShown() then
-            local tip = this.isFolded and get_loc("Click to expand this section.", "Click to expand this section.")
-                or get_loc("Click to collapse this section.", "Click to collapse this section.")
-            OzUIHelper:showTooltip(this, text, tip, "ANCHOR_TOPLEFT")
+        if this:IsShown() and tooltip and tooltip:IsShown() then
+            local tip = this.isFolded and get_loc("Click to expand this section.", "Click to expand this section.") or
+            get_loc("Click to collapse this section.", "Click to collapse this section.")
+            lib:showTooltip(this, text, tip, "ANCHOR_TOPLEFT")
         end
     end)
-
     return frame
 end
 
-function OzUIHelper:createSlider(parent, label, minVal, maxVal, step, defaultVal, onChange, width)
-    local w = width or 160
-    local frame = CreateFrame("Frame", nil, parent)
-    self:setSize(frame, w, 32)
+function lib:createSlider(parent, label, minVal, maxVal, step, defaultVal, onChange, width)
+    local f = CreateFrame("Frame", nil, parent)
+    self:setSize(f, width or 160, 32)
+    local sName = self:nextName("Slider")
+    local s = CreateFrame("Slider", sName, f, "OptionsSliderTemplate")
+    s:SetPoint("BOTTOMLEFT", 0, 1); s:SetPoint("BOTTOMRIGHT", 0, 1); s:SetHeight(14)
+    s:SetMinMaxValues(minVal or 0, maxVal or 100); s:SetValueStep(step or 1)
 
-    local sliderName = self:nextName("Slider")
-    local slider = CreateFrame("Slider", sliderName, frame, "OptionsSliderTemplate")
-    slider:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 1)
-    slider:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 1)
-    slider:SetHeight(14)
+    local txt, low, high = getglobal(sName .. "Text"), getglobal(sName .. "Low"), getglobal(sName .. "High")
+    if low then low:SetText(tostring(minVal or 0)) end
+    if high then high:SetText(tostring(maxVal or 100)) end
+    s:SetValue(defaultVal or minVal or 0)
 
-    minVal = minVal or 0
-    maxVal = maxVal or 100
-    step   = step or 1
-    slider:SetMinMaxValues(minVal, maxVal)
-    slider:SetValueStep(step)
-
-    local titleText = getglobal(sliderName .. "Text")
-    local lowText   = getglobal(sliderName .. "Low")
-    local highText  = getglobal(sliderName .. "High")
-
-    if lowText then lowText:SetText(tostring(minVal)) end
-    if highText then highText:SetText(tostring(maxVal)) end
-
-    local currentVal = defaultVal or minVal
-    if titleText then
-        titleText:SetText((label or "") .. ": " .. tostring(currentVal))
+    local function updateText(v)
+        if txt then txt:SetText((label or "") .. ": " .. (step and step < 1 and string.format("%.2f", v) or tostring(v))) end
     end
+    updateText(s:GetValue())
 
-    slider:SetValue(currentVal)
-
-    slider:SetScript("OnValueChanged", function()
-        local val = this:GetValue()
-        if step and step > 0 then
-            val = math.floor(val / step + 0.5) * step
-            if step < 1 then
-                val = tonumber(string.format("%.2f", val))
-            end
-        end
-        if titleText then
-            titleText:SetText((label or "") .. ": " .. tostring(val))
-        end
-        if onChange then
-            onChange(val)
-        end
+    s:SetScript("OnValueChanged", function()
+        local v = this:GetValue()
+        if step and step > 0 then v = math.floor(v / step + 0.5) * step end
+        updateText(v)
+        if onChange then onChange(v) end
     end)
-
-    frame.slider = slider
-    frame.titleText = titleText
-    function frame:SetValue(v)
-        slider:SetValue(v)
-        if titleText then
-            local displayVal = v
-            if step and step > 0 and step < 1 then
-                displayVal = tonumber(string.format("%.2f", v))
-            end
-            titleText:SetText((label or "") .. ": " .. tostring(displayVal))
-        end
+    function f:SetValue(v)
+        s:SetValue(v); updateText(v)
     end
 
-    function frame:GetValue() return slider:GetValue() end
+    function f:GetValue() return s:GetValue() end
 
-    return frame
+    return f
 end
 
 -- ==================== Compound Widgets ====================
+function lib:createCheckbox(parent, text, value, onChange)
+    local f = CreateFrame("Button", nil, parent)
+    f:EnableMouse(true); f:RegisterForClicks("LeftButtonUp")
 
-function OzUIHelper:createCheckbox(parent, text, value, onChange)
-    -- The whole row is a Button so clicking the label area toggles too
-    local frame = CreateFrame("Button", nil, parent)
-    frame:EnableMouse(true)
-    frame:RegisterForClicks("LeftButtonUp")
+    local cb = CreateFrame("CheckButton", self:nextName("CB"), f)
+    cb:SetPoint("LEFT", 0, 0); self:setSize(cb, M.widgetH, M.widgetH); self:applyBackdrop(cb, "widget")
+    local check = cb:CreateTexture(nil, "OVERLAY")
+    check:SetTexture("Interface\\Buttons\\UI-CheckBox-Check"); check:SetPoint("TOPLEFT", 1, -1); check:SetPoint(
+    "BOTTOMRIGHT", -1, 1); check:Hide()
 
-    local cb = CreateFrame("CheckButton", self:nextName("CB"), frame)
-    cb:SetPoint("LEFT", frame, "LEFT", 0, 0)
-    self:setSize(cb, M.widgetH, M.widgetH)
-    self:applyBackdrop(cb, "widget")
+    local lbl = f:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    lbl:SetPoint("LEFT", cb, "RIGHT", M.checkboxGap, 0); lbl:SetText(text or "")
+    self:setSize(f, M.widgetH + M.checkboxGap + lbl:GetStringWidth(), M.widgetH)
 
-    -- Check indicator
-    local checkTex = cb:CreateTexture(nil, "OVERLAY")
-    checkTex:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
-    checkTex:SetPoint("TOPLEFT", cb, "TOPLEFT", 1, -1)
-    checkTex:SetPoint("BOTTOMRIGHT", cb, "BOTTOMRIGHT", -1, 1)
-    checkTex:Hide()
-
-    local function updateCheck()
-        if cb:GetChecked() then checkTex:Show() else checkTex:Hide() end
-    end
-
-    local label = frame:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-    label:SetPoint("LEFT", cb, "RIGHT", M.checkboxGap, 0)
-    label:SetText(text or "")
-
-    local contentW = M.widgetH + M.checkboxGap + label:GetStringWidth()
-    self:setSize(frame, contentW, M.widgetH)
-
-    local isInitChecked = (value and value ~= 0 and value ~= "0") and 1 or nil
-    cb:SetChecked(isInitChecked)
-    updateCheck()
+    local function sync() if cb:GetChecked() then check:Show() else check:Hide() end end
+    cb:SetChecked((value and value ~= 0 and value ~= "0") and 1 or nil); sync()
 
     cb:SetScript("OnClick", function()
-        local isChecked = (cb:GetChecked() and cb:GetChecked() ~= 0) and true or false
-        updateCheck()
+        local isChecked = cb:GetChecked() and true or false
+        sync()
         if onChange then onChange(isChecked) end
     end)
-    frame:SetScript("OnClick", function()
-        cb:Click()
-    end)
-
-    function frame:SetValue(v)
-        local checked = (v and v ~= 0 and v ~= "0") and 1 or nil
-        cb:SetChecked(checked)
-        updateCheck()
+    f:SetScript("OnClick", function() cb:Click() end)
+    function f:SetValue(v)
+        cb:SetChecked((v and v ~= 0 and v ~= "0") and 1 or nil); sync()
     end
 
-    function frame:GetValue()
-        return (cb:GetChecked() and cb:GetChecked() ~= 0) and true or false
-    end
+    function f:GetValue() return cb:GetChecked() and true or false end
 
-    frame.checkbox = cb
-    frame.label    = label
-    return frame
+    return f
 end
 
-function OzUIHelper:createLabeledEditBox(parent, labelText, editWidth)
+function lib:createLabeledEditBox(parent, labelText, editWidth)
     local widget = CreateFrame("Frame", nil, parent)
-
     local label = self:createLabel(widget, labelText)
     label:SetPoint("LEFT", widget, "LEFT", 0, 0)
-
     local ew = editWidth or M.editBoxW
     local edit = self:createEditBox(widget, ew, M.editBoxH)
     edit:SetPoint("LEFT", label, "RIGHT", M.labelGap, 0)
-
     self:setSize(widget, label:GetStringWidth() + M.labelGap + ew, M.widgetH)
 
-    widget.editBox   = edit
-    widget._callback = nil
-
+    widget.editBox, widget._callback = edit, nil
     function widget:SetValue(v) self.editBox:SetText(tostring(v)) end
 
     function widget:GetValue() return self.editBox:GetText() end
@@ -975,245 +549,147 @@ function OzUIHelper:createLabeledEditBox(parent, labelText, editWidth)
     function widget:SetCallback(f) self._callback = f end
 
     edit:SetScript("OnEnterPressed", function()
-        -- Generic: pass the raw text; callers tonumber() as needed
         if widget._callback then widget._callback(this:GetText()) end
         this:ClearFocus()
     end)
-
     return widget
 end
 
-function OzUIHelper:createLabeledEditArea(parent, labelText, width, height)
-    local widget = CreateFrame("Frame", nil, parent)
-    local w = width or 280
-    local h = height or 60
-
-    local label = nil
-    local labelH = 0
-    if labelText and labelText ~= "" then
-        label = self:createLabel(widget, labelText)
-        label:SetPoint("TOPLEFT", widget, "TOPLEFT", 0, 0)
-        local lh = (label.GetHeight and label:GetHeight()) or 14
-        if lh <= 0 then lh = 14 end
-        labelH = lh + 4
+function lib:createLabeledEditArea(parent, labelText, width, height)
+    local f = CreateFrame("Frame", nil, parent)
+    local w, h = width or 280, height or 60
+    local labelH = (labelText and labelText ~= "") and 18 or 0
+    if labelH > 0 then
+        local l = self:createLabel(f, labelText); l:SetPoint("TOPLEFT", 0, 0)
     end
 
-    local bg = CreateFrame("Frame", nil, widget)
-    bg:SetPoint("TOPLEFT", widget, "TOPLEFT", 0, -labelH)
-    bg:SetWidth(w)
-    bg:SetHeight(h)
-    self:applyBackdrop(bg, "widget")
+    local bg = CreateFrame("Frame", nil, f)
+    bg:SetPoint("TOPLEFT", 0, -labelH); bg:SetWidth(w); bg:SetHeight(h)
+    self:applyBackdrop(bg, "widget"); bg:EnableMouse(true)
 
-    local edit = CreateFrame("EditBox", self:nextName("EditArea"), bg)
-    edit:SetMultiLine(true)
-    edit:SetAutoFocus(false)
-    edit:SetMaxLetters(500)
-    edit:SetPoint("TOPLEFT", bg, "TOPLEFT", 6, -6)
-    edit:SetPoint("BOTTOMRIGHT", bg, "BOTTOMRIGHT", -6, 6)
-    if edit.SetFontObject then
-        edit:SetFontObject(GameFontHighlightSmall)
-    elseif GameFontHighlightSmall and GameFontHighlightSmall.GetFont then
-        local font, size, flags = GameFontHighlightSmall:GetFont()
-        edit:SetFont(font, size, flags)
-    end
+    local eb = CreateFrame("EditBox", self:nextName("EditArea"), bg)
+    eb:SetMultiLine(true); eb:SetAutoFocus(false); eb:SetMaxLetters(500)
+    eb:SetPoint("TOPLEFT", 6, -6); eb:SetPoint("BOTTOMRIGHT", -6, 6)
+    eb:SetFontObject(GameFontHighlightSmall)
+    bg:SetScript("OnMouseDown", function() eb:SetFocus() end)
+    self:setSize(f, w, labelH + h)
 
-    bg:EnableMouse(true)
-    bg:SetScript("OnMouseDown", function()
-        edit:SetFocus()
-    end)
-
-    self:setSize(widget, w, labelH + h)
-
-    widget.editBox   = edit
-    widget.label     = label
-    widget._callback = nil
-    edit.lastText    = edit:GetText() or ""
-
-    function widget:SetValue(v)
-        local s = tostring(v or "")
-        self.editBox:SetText(s)
-        self.editBox.lastText = s
-    end
-
-    function widget:GetValue()
-        return self.editBox:GetText()
-    end
-
-    function widget:SetCallback(f)
-        self._callback = f
-    end
-
-    local function check_text_change(eb)
+    eb.lastText, f.editBox = eb:GetText() or "", eb
+    local function checkChange()
         local cur = eb:GetText() or ""
         if cur ~= eb.lastText then
-            eb.lastText = cur
-            if widget._callback then widget._callback(cur) end
+            eb.lastText = cur; if f._cb then f._cb(cur) end
         end
     end
 
-    edit:SetScript("OnEscapePressed", function()
-        this:ClearFocus()
+    eb:SetScript("OnEscapePressed", function() this:ClearFocus() end)
+    eb:SetScript("OnEditFocusGained", function()
+        this._focus = true
+        lib._activeEditArea = this
+        Master._activeEditArea = this
+    end)
+    eb:SetScript("OnEditFocusLost", function()
+        this._focus = nil
+        if lib._activeEditArea == this then lib._activeEditArea = nil end
+        if Master._activeEditArea == this then Master._activeEditArea = nil end
+        checkChange()
     end)
 
-    edit:SetScript("OnEditFocusGained", function()
-        OzUIHelper._activeEditArea = this
-    end)
-
-    edit:SetScript("OnEditFocusLost", function()
-        if OzUIHelper._activeEditArea == this then
-            OzUIHelper._activeEditArea = nil
+    local t = 0
+    eb:SetScript("OnUpdate", function()
+        if not this._focus then return end
+        t = t + (arg1 or 0)
+        if t >= 0.1 then
+            t = 0; checkChange()
         end
-        check_text_change(this)
     end)
 
-    -- WoW 1.12 lacks native EditBox OnTextChanged; poll OnUpdate for real-time changes
-    edit:SetScript("OnUpdate", function()
-        check_text_change(this)
-    end)
+    function f:SetValue(v)
+        eb:SetText(tostring(v or "")); eb.lastText = eb:GetText()
+    end
 
-    return widget
+    function f:GetValue() return eb:GetText() end
+
+    function f:SetCallback(cb) self._cb = cb end
+
+    return f
 end
 
-function OzUIHelper:createDropdown(parent, label, options, defaultValue, onChange)
+function lib:createDropdown(parent, label, options, defaultValue, onChange)
     local DD = self.Theme.dropdown
+    local f = CreateFrame("Frame", nil, parent)
+    local lbl = self:createLabel(f, label or ""); lbl:SetPoint("LEFT", 0, 0)
 
-    local frame = CreateFrame("Frame", nil, parent)
-
-    -- Label
-    local lbl = self:createLabel(frame, label or "")
-    lbl:SetPoint("LEFT", frame, "LEFT", 0, 0)
-
-    -- Calculate max option width
-    local maxOptionWidth = 0
-    for _, opt in pairs(options) do
-        local text = opt.label or tostring(opt.value)
-        local temp = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-        temp:SetText(text)
-        local width = temp:GetStringWidth()
-        temp:Hide()
-        if width > maxOptionWidth then maxOptionWidth = width end
+    local opts = options or {}
+    local maxW = 0
+    for _, opt in pairs(opts) do
+        local str = opt.label or tostring(opt.value)
+        if string.len(str) * 7 > maxW then maxW = string.len(str) * 7 end
     end
+    local btnW = math.max(DD.minWidth, maxW + DD.arrowPadding * 2 + 20)
 
-    local btnWidth = maxOptionWidth + DD.arrowPadding * 2 + 20
-    if btnWidth < DD.minWidth then btnWidth = DD.minWidth end
-
-    -- Dropdown button
-    local btn = CreateFrame("Button", self:nextName("DD"), frame)
-    btn:SetWidth(btnWidth)
-    btn:SetHeight(DD.height)
-    btn:SetPoint("LEFT", lbl, "RIGHT", DD.labelGap, 0)
+    local btn = CreateFrame("Button", self:nextName("DD"), f)
+    btn:SetWidth(btnW); btn:SetHeight(DD.height); btn:SetPoint("LEFT", lbl, "RIGHT", DD.labelGap, 0)
     self:applyBackdrop(btn, "widget")
 
-    -- Button text
     local btnText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    btnText:SetPoint("LEFT", btn, "LEFT", DD.padding, 0)
-    btnText:SetJustifyH("LEFT")
-    btnText:SetWidth(btnWidth - DD.padding - DD.arrowPadding - 10)
+    btnText:SetPoint("LEFT", DD.padding, 0); btnText:SetJustifyH("LEFT"); btnText:SetWidth(btnW - DD.padding * 2)
 
-    -- Arrow
     local arrow = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    arrow:SetPoint("RIGHT", btn, "RIGHT", -DD.arrowPadding, 0)
-    arrow:SetText("\226\150\188") -- ▼ (UTF-8)
-    arrow:SetTextColor(0.5, 0.5, 0.5)
+    arrow:SetPoint("RIGHT", -DD.arrowPadding, 0); arrow:SetText("\226\150\188"); arrow:SetTextColor(0.5, 0.5, 0.5)
 
-    -- Build sequential option list
-    local optionList = {}
-    for _, opt in pairs(options) do
-        table.insert(optionList, opt)
-    end
-    local optionCount = table.getn(optionList)
-    -- Row height model: rows are itemHeight tall, itemSpacing apart
-    local menuH = optionCount * DD.itemHeight
-        + (optionCount - 1) * DD.itemSpacing
-        + DD.menuPadY * 2
+    local list = {}
+    for _, o in pairs(opts) do table.insert(list, o) end
+    local count = table.getn(list)
+    local menuH = count * DD.itemHeight + DD.menuPadY * 2
 
-    -- Label lookup
-    local function getLabel(value)
-        for i = 1, table.getn(optionList) do
-            if optionList[i].value == value then
-                return optionList[i].label or tostring(value)
-            end
-        end
-        return tostring(value or "Select...")
+    local function getLabel(val)
+        for _, o in ipairs(list) do if o.value == val then return o.label or tostring(val) end end
+        return tostring(val or "Select...")
     end
     btnText:SetText(getLabel(defaultValue))
 
-    -- Shared blocker helper
-    local function getDropdownBlocker()
-        if not OzUIHelper._dropdownBlocker then
-            local blocker = CreateFrame("Frame", "OzUIHelperDropdownBlocker", UIParent)
-            blocker:SetFrameStrata("DIALOG")
-            blocker:SetAllPoints(UIParent)
-            blocker:EnableMouse(true)
-            blocker:Hide()
-            blocker:SetScript("OnMouseDown", function()
-                if OzUIHelper._activeDropdownMenu then
-                    OzUIHelper._activeDropdownMenu:Hide()
-                    OzUIHelper._activeDropdownMenu = nil
+    local function getBlocker()
+        if not Master._dropdownBlocker then
+            local b = CreateFrame("Frame", "OzUI_DropdownBlocker", UIParent)
+            b:SetFrameStrata("DIALOG"); b:SetAllPoints(UIParent); b:EnableMouse(true); b:Hide()
+            b:SetScript("OnMouseDown", function()
+                if Master._activeDD then
+                    Master._activeDD:Hide(); Master._activeDD = nil
                 end
                 this:Hide()
             end)
-            OzUIHelper._dropdownBlocker = blocker
+            Master._dropdownBlocker = b
         end
-        return OzUIHelper._dropdownBlocker
+        return Master._dropdownBlocker
     end
 
-    -- Menu (FULLSCREEN_DIALOG strata so it renders above DIALOG blocker)
     local menu = CreateFrame("Frame", nil, UIParent)
-    menu:SetFrameStrata("FULLSCREEN_DIALOG")
-    menu:SetWidth(btnWidth)
-    menu:SetHeight(menuH)
-    self:applyBackdrop(menu, "widget")
-    -- Slightly more opaque for popup
-    menu:SetBackdropColor(0.05, 0.05, 0.05, 0.95)
-    menu:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
-    menu:Hide()
-
+    menu:SetFrameStrata("FULLSCREEN_DIALOG"); menu:SetWidth(btnW); menu:SetHeight(menuH)
+    self:applyBackdrop(menu, "widget"); menu:SetBackdropColor(0.05, 0.05, 0.05, 0.95); menu:Hide()
     menu:SetScript("OnHide", function()
-        if OzUIHelper._activeDropdownMenu == menu then
-            OzUIHelper._activeDropdownMenu = nil
-            if OzUIHelper._dropdownBlocker then
-                OzUIHelper._dropdownBlocker:Hide()
-            end
+        if Master._activeDD == menu then
+            Master._activeDD = nil; getBlocker():Hide()
         end
     end)
 
-    if parent and parent.SetScript then
-        local oldParentHide = parent:GetScript("OnHide")
-        parent:SetScript("OnHide", function()
-            if oldParentHide then oldParentHide() end
-            if menu:IsShown() then
-                menu:Hide()
-            end
-        end)
-    end
-
-    -- Dropdown menu items
-    for i = 1, table.getn(optionList) do
-        local opt  = optionList[i]
-        local item = CreateFrame("Button", nil, menu)
-        item:SetWidth(btnWidth - DD.menuPadX * 2)
-        item:SetHeight(DD.itemHeight)
-        item:SetPoint("TOPLEFT", menu, "TOPLEFT",
-            DD.menuPadX, -DD.menuPadY - (i - 1) * (DD.itemHeight + DD.itemSpacing))
-
-        self:applyBackdrop(item, "dropdownItem")
-
-        local itemText = item:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        itemText:SetPoint("LEFT", item, "LEFT", DD.padding, 0)
-        itemText:SetText(opt.label or tostring(opt.value))
-        itemText:SetTextColor(1, 1, 1)
-
+    for i, opt in ipairs(list) do
         local optValue = opt.value
         local optLabel = opt.label or tostring(opt.value)
 
+        local item = CreateFrame("Button", nil, menu)
+        item:SetWidth(btnW - DD.menuPadX * 2); item:SetHeight(DD.itemHeight)
+        item:SetPoint("TOPLEFT", DD.menuPadX, -DD.menuPadY - (i - 1) * DD.itemHeight)
+        self:applyBackdrop(item, "dropdownItem")
+
+        local itText = item:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        itText:SetPoint("LEFT", DD.padding, 0); itText:SetText(optLabel); itText:SetTextColor(1, 1, 1)
+
         item:SetScript("OnEnter", function()
-            self:applyBackdrop(item, "dropdownHover")
-            itemText:SetTextColor(1, 0.82, 0)
+            self:applyBackdrop(item, "dropdownHover"); itText:SetTextColor(1, 0.82, 0)
         end)
         item:SetScript("OnLeave", function()
-            self:applyBackdrop(item, "dropdownItem")
-            itemText:SetTextColor(1, 1, 1)
+            self:applyBackdrop(item, "dropdownItem"); itText:SetTextColor(1, 1, 1)
         end)
         item:SetScript("OnClick", function()
             btnText:SetText(optLabel)
@@ -1222,79 +698,50 @@ function OzUIHelper:createDropdown(parent, label, options, defaultValue, onChang
         end)
     end
 
-    -- Toggle menu
     btn:SetScript("OnClick", function()
-        if menu:IsVisible() then
+        if menu:IsShown() then
             menu:Hide()
         else
-            if OzUIHelper._activeDropdownMenu and OzUIHelper._activeDropdownMenu ~= menu then
-                OzUIHelper._activeDropdownMenu:Hide()
-            end
-            local blocker = getDropdownBlocker()
-            blocker:Show()
-            OzUIHelper._activeDropdownMenu = menu
-
-            local _, y                     = btn:GetCenter()
+            if Master._activeDD then Master._activeDD:Hide() end
+            getBlocker():Show()
+            Master._activeDD = menu
+            local _, y = btn:GetCenter()
             menu:ClearAllPoints()
-            if y and menuH and (y - menuH < 0) then
+            if y and (y - menuH < 0) then
                 menu:SetPoint("BOTTOMLEFT", btn, "TOPLEFT", 0, 2)
             else
                 menu:SetPoint("TOPLEFT", btn, "BOTTOMLEFT", 0, -2)
             end
-            menu:Show()
-            menu:Raise()
+            menu:Show(); menu:Raise()
         end
     end)
 
-    self:setSize(frame, lbl:GetStringWidth() + DD.labelGap + btnWidth, DD.height)
+    self:setSize(f, lbl:GetStringWidth() + DD.labelGap + btnW, DD.height)
+    function f:SetValue(v) btnText:SetText(getLabel(v)) end
 
-    frame._menu    = menu
-    frame._btnText = btnText
-    frame._btn     = btn
-
-    function frame:SetValue(v) btnText:SetText(getLabel(v)) end
-
-    function frame:GetValue()
-        local currentText = btnText:GetText()
-        for i = 1, table.getn(optionList) do
-            if (optionList[i].label or tostring(optionList[i].value)) == currentText then
-                return optionList[i].value
-            end
-        end
-        return nil
+    function f:GetValue()
+        local txt = btnText:GetText()
+        for _, o in ipairs(list) do if (o.label or tostring(o.value)) == txt then return o.value end end
     end
 
-    function frame:Cleanup()
-        if self._menu then self._menu:Hide() end
-    end
-
-    return frame
+    return f
 end
 
 -- ==================== Scrollable Item List ====================
-
-function OzUIHelper:createScrollItemList(parent, opts)
+function lib:createScrollItemList(parent, opts)
     local o             = opts or {}
     local width         = o.width or 300
     local height        = o.height or 100
-    local showQty       = o.showQuantity or false
-    local emptyText     = o.emptyText or "No items added"
-    local totalPrefix   = o.totalPrefix or "Total: "
-    local nameResolver  = o.nameResolver or function(id) return "[" .. tostring(id) .. "]" end
-    local colorResolver = o.colorResolver
     local getItems      = o.getItems or function() return {} end
-    -- Sort order is pluggable (itemID ascending by default; an ignore-list
-    -- would pass a name-alphabetical comparator)
-    local sortFunc      = o.sortFunc or function(a, b)
-        return a.itemID < b.itemID
-    end
+    local sortFunc      = o.sortFunc
+    local emptyText     = o.emptyText or "No items"
+    local showQty       = (o.showQty ~= false)
+    local totalPrefix   = o.totalPrefix or "Total: "
+    local nameColorFunc = o.nameColorFunc
+    local LS            = self.Metrics.list
 
-    local LS            = M.list
-
-    -- ScrollFrame
     local scrollFrame   = CreateFrame("ScrollFrame", nil, parent)
-    scrollFrame:SetWidth(width)
-    scrollFrame:SetHeight(height)
+    scrollFrame:SetWidth(width); scrollFrame:SetHeight(height)
     self:applyBackdrop(scrollFrame, "panel")
 
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
@@ -1302,33 +749,24 @@ function OzUIHelper:createScrollItemList(parent, opts)
     scrollFrame:SetScrollChild(scrollChild)
     scrollFrame:EnableMouseWheel(true)
 
-    local capScrollChild = scrollChild
-    local capScrollFrame = scrollFrame
     scrollFrame:SetScript("OnMouseWheel", function()
-        local cur = this:GetVerticalScroll()
-        local new = cur - arg1 * LS.rowH
-        if new < 0 then new = 0 end
-        local maxS = capScrollChild:GetHeight() - capScrollFrame:GetHeight()
-        if maxS < 0 then maxS = 0 end
-        if new > maxS then new = maxS end
-        this:SetVerticalScroll(new)
+        local cur = this:GetVerticalScroll() - arg1 * LS.rowH
+        local maxS = math.max(0, scrollChild:GetHeight() - scrollFrame:GetHeight())
+        this:SetVerticalScroll(math.max(0, math.min(cur, maxS)))
     end)
 
     local widget = {}
-
     scrollFrame:SetScript("OnSizeChanged", function()
         local sw = this:GetWidth()
         if sw and sw > LS.contentRightInset then
-            capScrollChild:SetWidth(sw - LS.contentRightInset)
-            if widget and widget.refresh then widget:refresh() end
+            scrollChild:SetWidth(sw - LS.contentRightInset)
+            if widget.refresh then widget:refresh() end
         end
     end)
 
-    -- Total label
     local totalLabel = parent:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
     totalLabel:SetTextColor(0.5, 0.5, 0.5)
 
-    -- Row frame pool (reuses frame objects across refreshes to eliminate frame leaks)
     local rowPool = {}
     local emptyLabel = nil
 
@@ -1337,11 +775,7 @@ function OzUIHelper:createScrollItemList(parent, opts)
             local rowFrame  = CreateFrame("Frame", nil, scrollChild)
             local nameLabel = rowFrame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
             local qtyLabel  = rowFrame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-            rowPool[index]  = {
-                frame     = rowFrame,
-                nameLabel = nameLabel,
-                qtyLabel  = qtyLabel,
-            }
+            rowPool[index]  = { frame = rowFrame, nameLabel = nameLabel, qtyLabel = qtyLabel }
         end
         return rowPool[index]
     end
@@ -1352,64 +786,54 @@ function OzUIHelper:createScrollItemList(parent, opts)
 
     function widget:refresh()
         local itemTable = getItems() or {}
-
         local itemList = {}
         for itemID, val in pairs(itemTable) do
             table.insert(itemList, { itemID = itemID, value = val })
         end
-        table.sort(itemList, sortFunc)
+        if sortFunc then table.sort(itemList, sortFunc) end
 
         local count = table.getn(itemList)
         if count == 0 then
             if not emptyLabel then
                 emptyLabel = scrollChild:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
                 emptyLabel:SetPoint("CENTER", scrollChild, "CENTER", 0, 0)
-                emptyLabel:SetText(emptyText)
-                emptyLabel:SetTextColor(0.4, 0.4, 0.4)
+                emptyLabel:SetText(emptyText); emptyLabel:SetTextColor(0.4, 0.4, 0.4)
             end
             emptyLabel:Show()
-            for _, r in ipairs(rowPool) do
-                r.frame:Hide()
-            end
-            scrollChild:SetHeight(40)
+            for _, r in ipairs(rowPool) do r.frame:Hide() end
+            scrollChild:SetHeight(height)
             totalLabel:SetText(totalPrefix .. "0")
             return
         end
 
-        if emptyLabel then
-            emptyLabel:Hide()
-        end
-
-        local rowH   = LS.rowH
-        local totalH = count * rowH + LS.rowPadBottom
+        if emptyLabel then emptyLabel:Hide() end
+        local totalH = count * LS.rowH + LS.rowPadTop + LS.rowPadBottom
         scrollChild:SetHeight(math.max(totalH, height))
-        local currentW = scrollFrame:GetWidth()
-        if not currentW or currentW <= 0 then currentW = width end
-        local innerW = currentW - LS.contentRightInset - LS.rowPadX * 2
-        if innerW < 50 then innerW = 50 end
+        local innerW = scrollChild:GetWidth()
 
-        for i, entry in ipairs(itemList) do
-            local capItemID = entry.itemID
-            local capValue  = entry.value
+        for i = 1, count do
+            local itemData = itemList[i]
+            local itemID   = itemData.itemID
+            local capValue = itemData.value
+            local r        = getRow(i)
 
-            local r         = getRow(i)
-            r.frame:SetWidth(innerW)
-            r.frame:SetHeight(rowH)
             r.frame:ClearAllPoints()
-            r.frame:SetPoint("TOPLEFT", scrollChild, "TOPLEFT",
-                LS.rowPadX, -LS.rowPadTop - (i - 1) * rowH)
+            r.frame:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", LS.rowPadX, -LS.rowPadTop - (i - 1) * LS.rowH)
+            r.frame:SetWidth(innerW - LS.rowPadX * 2); r.frame:SetHeight(LS.rowH)
 
-            local nameStr = nameResolver(capItemID)
             r.nameLabel:ClearAllPoints()
             r.nameLabel:SetPoint("LEFT", r.frame, "LEFT", LS.namePadX, 0)
-            r.nameLabel:SetText(nameStr)
-            if colorResolver then
-                local cr, cg, cb = colorResolver(capItemID)
-                if cr then
-                    r.nameLabel:SetTextColor(cr, cg, cb)
-                else
-                    r.nameLabel:SetTextColor(1, 1, 1)
-                end
+            r.nameLabel:SetJustifyH("LEFT")
+
+            local name, _, quality = GetItemInfo(itemID)
+            r.nameLabel:SetText(name or ("Item #" .. tostring(itemID)))
+
+            if nameColorFunc then
+                local cr, cg, cb = nameColorFunc(itemID, quality)
+                if cr then r.nameLabel:SetTextColor(cr, cg, cb) else r.nameLabel:SetTextColor(1, 1, 1) end
+            elseif quality and OzLib and OzLib.ITEM_QUALITY_COLORS and OzLib.ITEM_QUALITY_COLORS[quality] then
+                local qc = OzLib.ITEM_QUALITY_COLORS[quality]
+                r.nameLabel:SetTextColor(qc[1], qc[2], qc[3])
             else
                 r.nameLabel:SetTextColor(1, 1, 1)
             end
@@ -1419,20 +843,15 @@ function OzUIHelper:createScrollItemList(parent, opts)
                 r.qtyLabel:SetPoint("RIGHT", r.frame, "RIGHT", -LS.qtyPadX, 0)
                 r.qtyLabel:SetText("x " .. tostring(capValue))
                 r.qtyLabel:Show()
-                r.nameLabel:SetWidth(innerW - LS.namePadX - LS.qtyPadX
-                    - r.qtyLabel:GetStringWidth() - LS.qtyGap)
+                r.nameLabel:SetWidth(innerW - LS.namePadX - LS.qtyPadX - r.qtyLabel:GetStringWidth() - LS.qtyGap)
             else
                 r.qtyLabel:Hide()
                 r.nameLabel:SetWidth(innerW - LS.namePadX - LS.qtyPadX)
             end
-
             r.frame:Show()
         end
 
-        for k = count + 1, table.getn(rowPool) do
-            rowPool[k].frame:Hide()
-        end
-
+        for k = count + 1, table.getn(rowPool) do rowPool[k].frame:Hide() end
         totalLabel:SetText(totalPrefix .. count)
     end
 
@@ -1440,8 +859,7 @@ function OzUIHelper:createScrollItemList(parent, opts)
 end
 
 -- ==================== Class Colors ====================
-
-local CLASS_COLORS = {
+lib.CLASS_COLORS = {
     warrior = { r = 0.78, g = 0.61, b = 0.43 },
     mage    = { r = 0.41, g = 0.80, b = 0.94 },
     rogue   = { r = 1.00, g = 0.96, b = 0.41 },
@@ -1453,107 +871,58 @@ local CLASS_COLORS = {
     paladin = { r = 0.96, g = 0.55, b = 0.73 },
 }
 
--- Expose for other modules (e.g. OzIgnore class-colored rows)
-OzUIHelper.CLASS_COLORS = CLASS_COLORS
-
-function OzUIHelper:classColor(class)
-    -- Explicit class required: callers resolve UnitClass() themselves
+function lib:classColor(class)
     if not class then return 1, 1, 1 end
-    local color = CLASS_COLORS[string.lower(class)]
+    local color = self.CLASS_COLORS[string.lower(class)]
     if color then return color.r, color.g, color.b end
     return 1, 1, 1
 end
 
--- ==================== Minimap Button Widget ====================
-
-function OzUIHelper:createMinimapButton(opts)
+-- ==================== Minimap Widget ====================
+function lib:createMinimapButton(opts)
     local o = opts or {}
     local MM = o.metrics or self.Metrics.minimap
+    local btn = CreateFrame("Button", o.name or self:nextName("Minimap"), Minimap)
+    btn:SetWidth(MM.btnSize); btn:SetHeight(MM.btnSize); btn:SetFrameStrata("LOW")
+    btn:EnableMouse(true); btn:SetMovable(true); btn:RegisterForDrag("LeftButton")
 
-    local button = CreateFrame("Button", o.name or self:nextName("Minimap"), Minimap)
-    button:SetWidth(MM.btnSize)
-    button:SetHeight(MM.btnSize)
-    button:SetFrameStrata("LOW")
-    button:EnableMouse(true)
-    button:SetMovable(true)
-    button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    button:RegisterForDrag("LeftButton")
-
-    -- Position update (angle-based, optionally overrideable)
-    local angleState = o.angleState or OZAIO
-    local function update_position()
-        local angle = angleState.minimap_angle or 0
-        local rad = math.rad(angle)
-        local x = math.cos(rad) * MM.radius
-        local y = math.sin(rad) * MM.radius
-        button:ClearAllPoints()
-        button:SetPoint("CENTER", Minimap, "CENTER", x, y)
+    local state = o.angleState or btn
+    local function updatePos()
+        local rad = math.rad(state.minimap_angle or 0)
+        btn:ClearAllPoints()
+        btn:SetPoint("CENTER", Minimap, "CENTER", math.cos(rad) * MM.radius, math.sin(rad) * MM.radius)
     end
-    update_position()
+    updatePos()
 
-    -- Icon
     if o.icon then
-        local icon = button:CreateTexture(nil, "BACKGROUND")
-        icon:SetTexture(o.icon)
-        icon:SetWidth(MM.iconSize)
-        icon:SetHeight(MM.iconSize)
-        icon:SetPoint("TOPLEFT", button, "TOPLEFT", MM.iconOffX, MM.iconOffY)
-        if o.texCoord then
-            icon:SetTexCoord(unpack(o.texCoord))
-        elseif MM.texCoord then
-            icon:SetTexCoord(unpack(MM.texCoord))
-        end
+        local icon = btn:CreateTexture(nil, "BACKGROUND")
+        icon:SetTexture(o.icon); icon:SetWidth(MM.iconSize); icon:SetHeight(MM.iconSize)
+        icon:SetPoint("TOPLEFT", MM.iconOffX, MM.iconOffY)
+        icon:SetTexCoord(unpack(o.texCoord or MM.texCoord))
     end
-
-    -- Overlay border
     if o.overlay then
-        local overlay = button:CreateTexture(nil, "OVERLAY")
-        overlay:SetTexture(o.overlay)
-        overlay:SetWidth(MM.overlaySize)
-        overlay:SetHeight(MM.overlaySize)
-        overlay:SetPoint("TOPLEFT", button, "TOPLEFT", 0, 0)
+        local ov = btn:CreateTexture(nil, "OVERLAY")
+        ov:SetTexture(o.overlay); ov:SetWidth(MM.overlaySize); ov:SetHeight(MM.overlaySize); ov:SetPoint("TOPLEFT", 0, 0)
     end
-
-    -- Highlight
     if o.highlight then
-        button:SetHighlightTexture(o.highlight, "ADD")
+        btn:SetHighlightTexture(o.highlight, "ADD")
     end
 
-    -- Drag rotation
-    button:SetScript("OnDragStart", function()
-        button._dragActive = true
-        button:SetScript("OnUpdate", function()
-            if not button._dragActive then return end
+    btn:SetScript("OnDragStart", function()
+        btn:SetScript("OnUpdate", function()
             local mx, my = GetCursorPosition()
-            local scale = Minimap:GetEffectiveScale()
+            local s = Minimap:GetEffectiveScale()
             local sx, sy = Minimap:GetCenter()
-            mx = mx / scale
-            my = my / scale
-            local a = math.deg(math.atan2(my - sy, mx - sx))
-            if a < 0 then a = a + 360 end
-            angleState.minimap_angle = a
-            update_position()
+            local a = math.deg(math.atan2((my / s) - sy, (mx / s) - sx))
+            state.minimap_angle = (a < 0) and (a + 360) or a
+            updatePos()
         end)
     end)
-    button:SetScript("OnDragStop", function()
-        button._dragActive = nil
-        button:SetScript("OnUpdate", nil)
-    end)
-
-    -- Tooltip
+    btn:SetScript("OnDragStop", function() btn:SetScript("OnUpdate", nil) end)
     if o.tooltipTitle then
-        button:SetScript("OnEnter", function()
-            OzUIHelper:showTooltip(this, o.tooltipTitle, o.tooltipText, "ANCHOR_LEFT")
-        end)
-        button:SetScript("OnLeave", function()
-            OzUIHelper:hideTooltip()
-        end)
+        btn:SetScript("OnEnter", function() lib:showTooltip(this, o.tooltipTitle, o.tooltipText, "ANCHOR_LEFT") end)
+        btn:SetScript("OnLeave", function() lib:hideTooltip() end)
     end
-
-    -- Click
-    if o.onClick then
-        button:SetScript("OnClick", o.onClick)
-    end
-
-    return button
+    if o.onClick then btn:SetScript("OnClick", o.onClick) end
+    return btn
 end

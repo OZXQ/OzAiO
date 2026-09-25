@@ -101,8 +101,9 @@ end
 
 -- ==================== Layout Aliases ====================
 
+local OzUIHelper     = OzUIHelper:New("OzAiO")
 local MD             = OzUIHelper.Metrics.dialog -- dialog component sizes
-local M              = OzUIHelper.Metrics -- general widget sizes + minimap
+local M              = OzUIHelper.Metrics        -- general widget sizes + minimap
 
 -- Minimap asset paths
 local MINIMAP_ASSETS = {
@@ -280,8 +281,8 @@ local function create_schema_widget(parent, item)
     elseif itype == "slider" or itype == "range" then
         widget = OzUIHelper:createSlider(parent, item.label or "", item.min or 0, item.max or 100, item.step or 1,
             get_value(), function(val)
-            set_value(val)
-        end, item.width)
+                set_value(val)
+            end, item.width)
         attach_tooltip(widget, item.tooltip, item.label)
     elseif itype == "editbox" or itype == "text" then
         widget = OzUIHelper:createLabeledEditBox(parent, (item.label or "") .. ":", item.width or 60)

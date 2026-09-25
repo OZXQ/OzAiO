@@ -115,9 +115,9 @@ Unlike monolithic UI replacements (such as pfUI) that enforce complete visual ov
 
 #### 3.3 Dynamic Layout & UI Design System (`lib/configuihelper.lua` - `OzUIHelper`)
 - **Cross-Addon Singleton & Stateless Factory Architecture:**
-  `OzUIHelper` operates as a versioned, stateless widget factory and layout engine (`MAJOR = "OzUIHelper-1.0"`, `MINOR = 1`):
+  `OzUIHelper` operates as a versioned, stateless widget factory and layout engine (`MAJOR = "OzUIHelper-1.0"`, `MINOR = 3`):
   - **Zero Global UI State:** `OzUIHelper` stores zero persistent layout or widget state inside its own table. All layout state (cursor coordinates, content heights, item caches) is strictly encapsulated within the returned `panel` or `widget` instance, ensuring multiple independent addons can use `OzUIHelper` concurrently without state collisions.
-  - **Namespaced Frame Generation:** Auto-generated frame names accept an optional addon-specific prefix (defaulting to `"OZAIO"` or caller-defined, e.g. `prefix .. "_" .. nextId()`), preventing global frame name clashes across different addons.
+  - **Namespaced Frame Generation:** Callers instantiate via `OzUIHelper:New("AddonName")` (or `OzLib["OzUIHelper-1.0"]:New("AddonName")`), ensuring frame names are cleanly prefixed (e.g. `AddonName_Btn_1`), preventing global frame name clashes across different addons.
   - **Instance-Scoped Pooling:** Object pools (e.g. `makeScrollItemList` row pools) are attached directly to their parent widget instance rather than stored globally.
   - **Theme Non-Pollution:** Base theme definitions provide safe shared defaults while allowing callers to pass custom backdrops, metrics, or colors without mutating global theme tables.
 - **Resizable Configuration Shell:**
