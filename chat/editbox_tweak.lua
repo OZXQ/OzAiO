@@ -14,7 +14,8 @@ local L = setmetatable({}, {
 
 if LOCALE == "zhCN" then
     L["EditBox Tweaks"] = "聊天输入框增强"
-    L["Move chat editbox to screen center dodging action bars, and iterate history with arrow keys."] = "将聊天输入框居中并避开动作条，支持无需按Alt直接用上下键翻阅聊天历史。"
+    L["Move chat editbox to screen center dodging action bars, and iterate history with arrow keys."] =
+    "将聊天输入框居中并避开动作条，支持无需按Alt直接用上下键翻阅聊天历史。"
 end
 
 local dodge_frames = {
@@ -52,6 +53,9 @@ local function update_position()
 end
 
 local function enable_editbox()
+    if OZAIO_CONFIG and OZAIO_CONFIG["chat.editbox_tweak"] == false then
+        return
+    end
     if not ChatFrameEditBox then return end
     ChatFrameEditBox:SetAltArrowKeyMode(false)
 
@@ -67,7 +71,6 @@ end
 local function disable_editbox()
     if not ChatFrameEditBox then return end
     ChatFrameEditBox:SetAltArrowKeyMode(true)
-
     if not is_pfui_active() then
         OzHook:unhook("UIParent_ManageFramePositions", update_position)
         last_top = nil
@@ -87,7 +90,7 @@ module = OzFramework:registerMod({
     title = L["EditBox Tweaks"],
     category = "Chat",
     order = 6,
-    enabled = false,
+    enabled = true,
     config = {
         ["chat.editbox_tweak"] = false,
     },
