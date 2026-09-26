@@ -8,6 +8,7 @@
 lib\configuihelper.lua
 lib\lib.lua
 lib\libhook.lua
+lib\luaAPI.lua
 core\framework.lua
 ## external api could be used by other addons
 core\ozapi.lua

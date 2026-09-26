@@ -420,6 +420,9 @@ local function create_config_ui()
 
     local closeBtn = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     closeBtn:SetPoint("RIGHT", header, "RIGHT", -2, 0)
+    closeBtn:SetScript("OnClick", function()
+        if OzFramework.core.config_frame then OzFramework.core.config_frame:Hide() end
+    end)
 
     -- Border overlay (renders above header in Z-order)
     local borderOverlay = CreateFrame("Frame", nil, frame)
