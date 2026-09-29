@@ -23,17 +23,51 @@ if locale == "zhCN" then
     L["Auto Dismount and Auto Stance disabled: pfUI/ShaguTweaks detected"] = "检测到 pfUI/ShaguTweaks，已默认关闭自动下坐骑和自动切姿态"
 end
 
--- Default font path (can be changed as needed)
-local font_path = "Fonts\\FRIZQT__.TTF"
-if locale == "zhCN" then
-    font_path = "Fonts\\ARIALN.TTF"
+-- Fallback font if font_object:GetFont() is nil or invalid
+local default_text_font = nil
+if GameFontNormal and GameFontNormal.GetFont then
+    local f = GameFontNormal:GetFont()
+    if f and f ~= "" and not (locale == "zhCN" and string.find(string.upper(f), "ARIALN")) then
+        default_text_font = f
+    end
+end
+if not default_text_font then
+    if STANDARD_TEXT_FONT and STANDARD_TEXT_FONT ~= "" then
+        default_text_font = STANDARD_TEXT_FONT
+    elseif locale == "zhCN" then
+        default_text_font = "Fonts\\FZBWJW.ttf"
+    end
 end
 
--- Helper: safely set font on a font object
-local function set_font_safe(font_object, path, size, flags)
-    if font_object and font_object.SetFont then
-        font_object:SetFont(path, size, flags)
+-- Cache original font path and flags per font object so resizing only alters size
+local font_cache = {}
+
+-- Helper: safely set font size on a font object while preserving its original font file
+local function set_font_safe(font_object, size, flags_override, is_number)
+    if not (font_object and font_object.SetFont) then return end
+
+    local cached = font_cache[font_object]
+    if not cached then
+        local path, _, original_flags = nil, nil, nil
+        if font_object.GetFont then
+            path, _, original_flags = font_object:GetFont()
+        end
+        if not path or path == "" or (locale == "zhCN" and not is_number and string.find(string.upper(path), "ARIALN")) then
+            path = is_number and "Fonts\\ARIALN.TTF" or default_text_font
+        end
+        cached = {
+            path = path,
+            flags = original_flags,
+        }
+        font_cache[font_object] = cached
     end
+
+    local flags = flags_override
+    if flags == nil then
+        flags = cached.flags
+    end
+
+    font_object:SetFont(cached.path, size, flags)
 end
 
 -- Apply font size across all game font objects
@@ -47,44 +81,44 @@ local function apply_font_size(base_size)
     local huge_size = large_size + 4
 
     -- 1. Core GameFont series
-    set_font_safe(SystemFont, font_path, base_size)
-    set_font_safe(GameFontNormal, font_path, base_size)
-    set_font_safe(GameFontHighlight, font_path, base_size)
-    set_font_safe(GameFontDisable, font_path, base_size)
-    set_font_safe(GameFontGreen, font_path, base_size)
-    set_font_safe(GameFontRed, font_path, base_size)
-    set_font_safe(GameFontBlack, font_path, base_size)
-    set_font_safe(GameFontWhite, font_path, base_size)
-    set_font_safe(DialogButtonNormalText, font_path, base_size)
-    set_font_safe(DialogButtonHighlightText, font_path, base_size)
+    set_font_safe(SystemFont, base_size)
+    set_font_safe(GameFontNormal, base_size)
+    set_font_safe(GameFontHighlight, base_size)
+    set_font_safe(GameFontDisable, base_size)
+    set_font_safe(GameFontGreen, base_size)
+    set_font_safe(GameFontRed, base_size)
+    set_font_safe(GameFontBlack, base_size)
+    set_font_safe(GameFontWhite, base_size)
+    set_font_safe(DialogButtonNormalText, base_size)
+    set_font_safe(DialogButtonHighlightText, base_size)
 
     -- Small (Normal - 2)
-    set_font_safe(GameFontNormalSmall, font_path, small_size)
-    set_font_safe(GameFontHighlightSmall, font_path, small_size)
-    set_font_safe(GameFontHighlightSmallOutline, font_path, small_size, "OUTLINE")
-    set_font_safe(GameFontDisableSmall, font_path, small_size)
-    set_font_safe(GameFontGreenSmall, font_path, small_size)
-    set_font_safe(GameFontRedSmall, font_path, small_size)
-    set_font_safe(GameFontDarkGraySmall, font_path, small_size)
+    set_font_safe(GameFontNormalSmall, small_size)
+    set_font_safe(GameFontHighlightSmall, small_size)
+    set_font_safe(GameFontHighlightSmallOutline, small_size, "OUTLINE")
+    set_font_safe(GameFontDisableSmall, small_size)
+    set_font_safe(GameFontGreenSmall, small_size)
+    set_font_safe(GameFontRedSmall, small_size)
+    set_font_safe(GameFontDarkGraySmall, small_size)
 
     -- Large (Normal + 2)
-    set_font_safe(GameFontNormalLarge, font_path, large_size)
-    set_font_safe(GameFontHighlightLarge, font_path, large_size)
-    set_font_safe(GameFontDisableLarge, font_path, large_size)
-    set_font_safe(GameFontGreenLarge, font_path, large_size)
-    set_font_safe(GameFontRedLarge, font_path, large_size)
+    set_font_safe(GameFontNormalLarge, large_size)
+    set_font_safe(GameFontHighlightLarge, large_size)
+    set_font_safe(GameFontDisableLarge, large_size)
+    set_font_safe(GameFontGreenLarge, large_size)
+    set_font_safe(GameFontRedLarge, large_size)
 
     -- 2. Other common fonts, mapped to corresponding sizes
-    set_font_safe(NumberFontNormal, font_path, base_size, "OUTLINE")
-    set_font_safe(NumberFontNormalSmall, font_path, small_size, "OUTLINE")
-    set_font_safe(NumberFontNormalLarge, font_path, large_size, "OUTLINE")
-    set_font_safe(ChatFontNormal, font_path, base_size)
-    set_font_safe(QuestFontNormalSmall, font_path, small_size)
-    set_font_safe(QuestTitleFont, font_path, huge_size)
-    set_font_safe(TextStatusBarText, font_path, small_size)
-    set_font_safe(GameTooltipText, font_path, small_size)
-    set_font_safe(GameTooltipHeaderText, font_path, base_size, "THICK")
-    set_font_safe(GameFontNormalHuge, font_path, huge_size)
+    set_font_safe(NumberFontNormal, base_size, "OUTLINE", true)
+    set_font_safe(NumberFontNormalSmall, small_size, "OUTLINE", true)
+    set_font_safe(NumberFontNormalLarge, large_size, "OUTLINE", true)
+    set_font_safe(ChatFontNormal, base_size)
+    set_font_safe(QuestFontNormalSmall, small_size)
+    set_font_safe(QuestTitleFont, huge_size)
+    set_font_safe(TextStatusBarText, small_size)
+    set_font_safe(GameTooltipText, small_size)
+    set_font_safe(GameTooltipHeaderText, base_size, "THICK")
+    set_font_safe(GameFontNormalHuge, huge_size)
 end
 
 -- Apply font size to game fonts plus the player/target name plates
@@ -92,10 +126,10 @@ local function apply_all_font_sizes(base_size)
     apply_font_size(base_size)
 
     if PlayerName and PlayerName.SetFont then
-        PlayerName:SetFont(font_path, base_size + 4, "OUTLINE")
+        set_font_safe(PlayerName, base_size + 4, "OUTLINE", false)
     end
     if TargetName and TargetName.SetFont then
-        TargetName:SetFont(font_path, base_size + 4, "OUTLINE")
+        set_font_safe(TargetName, base_size + 4, "OUTLINE", false)
     end
 end
 
@@ -108,32 +142,32 @@ local shapeshift_icons = {
 
 -- Buff icon fragments shared by mount buffs on this client (Turtle WoW)
 local mount_icons = {
-    "_mount_",                  -- regular mounts (Ability_Mount_*)
-    "spell_nature_swiftness",   -- skeletal warhorse / mechanostrider / kodo / dreadsteed / raptor
-    "_qirajicrystal_",          -- Qiraji crystal mounts
-    "hunter_pet_turtle",        -- turtle mount (Turtle WoW)
-    "boar",                     -- wild boar
-    "warstomp",                 -- zebra
-    "bullrush",                 -- ghost griffon
-    "_branch_",                 -- reindeer
-    "zuoqi",                    -- generic Turtle WoW mount icon
+    "_mount_",                -- regular mounts (Ability_Mount_*)
+    "spell_nature_swiftness", -- skeletal warhorse / mechanostrider / kodo / dreadsteed / raptor
+    "_qirajicrystal_",        -- Qiraji crystal mounts
+    "hunter_pet_turtle",      -- turtle mount (Turtle WoW)
+    "boar",                   -- wild boar
+    "warstomp",               -- zebra
+    "bullrush",               -- ghost griffon
+    "_branch_",               -- reindeer
+    "zuoqi",                  -- generic Turtle WoW mount icon
     "inv_pet_speedy",
     "inv_misc_head_dragon_black",
     "spell_nature_wispsplode",
     "inv_misc_branch_01",
-    "inv_valentinesboxofchocolates02",  -- pink horse
-    "inv_valentinescard01",             -- pink tiger
-    "ability_hunter_pet_dragonhawk",    -- dragonhawk
+    "inv_valentinesboxofchocolates02", -- pink horse
+    "inv_valentinescard01",            -- pink tiger
+    "ability_hunter_pet_dragonhawk",   -- dragonhawk
     "ability_hunter_pet_tallstrider",
     "inv_misc_horn_01",
-    "hunter_pet_bear",                  -- bear
-    "hunter_pet_hippogryph",            -- hippogryph
-    "hunter_pet_stag1",                 -- stag
-    "hunter_pet_tallstrider",           -- lovebird
-    "inv_misc_key_06",                  -- engineering mounts
+    "hunter_pet_bear",              -- bear
+    "hunter_pet_hippogryph",        -- hippogryph
+    "hunter_pet_stag1",             -- stag
+    "hunter_pet_tallstrider",       -- lovebird
+    "inv_misc_key_06",              -- engineering mounts
     "inv_misc_key_12",
-    "spell_nature_sentinal",            -- raven
-    "spell_magic_polymorphchicken",     -- magic rooster
+    "spell_nature_sentinal",        -- raven
+    "spell_magic_polymorphchicken", -- magic rooster
 }
 
 -- Errors that indicate the player is mounted or shapeshifted (client-localized)

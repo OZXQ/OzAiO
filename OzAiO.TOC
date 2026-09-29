@@ -1,6 +1,8 @@
 ## Interface: 11200
-## Title: Oz Toolbox
-## Title-zhCN: Oz工具箱
+## Title: |cff00e0ffOzAiO|r |cffffffff(Oz Toolbox)|r
+## Title-zhCN: |cff00e0ffOzAiO|r |cffffffff(Oz工具箱)|r
+## Notes: Modular, high-performance Quality-of-Life and automation suite for Vanilla 1.12.1, Turtle WoW, and SuperWoW.
+## Notes-zhCN: 专为香草 1.12.1、乌龟服与 SuperWoW 打造的轻量模块化全能生活质量与自动化工具箱。
 ## Author: Oz
 ## Version: 1.0
 ## SavedVariablesPerCharacter: OZAIO, OZAIO_CONFIG

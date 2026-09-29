@@ -309,7 +309,7 @@ local function create_schema_widget(parent, item)
     elseif itype == "header" then
         widget = OzUIHelper:createHeader(parent, item.label or "")
     elseif itype == "label" then
-        local fs = OzUIHelper:createLabel(parent, item.label or "", item.font or OzUIHelper.Fonts.normal)
+        local fs = OzUIHelper:createLabel(parent, item.label or item.text or "", item.font or OzUIHelper.Fonts.normal)
         if item.color then
             fs:SetTextColor(unpack(item.color))
         end

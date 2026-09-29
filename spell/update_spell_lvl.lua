@@ -59,6 +59,7 @@ local function get_action_spell_info(slot_id)
     end
 
     scan_tooltip:Hide()
+    name = string.gsub(name, "^%s*(.-)%s*$", "%1")
     return name, rank_text
 end
 
@@ -70,6 +71,7 @@ local function build_spellbook_cache()
     while true do
         local name, rank = GetSpellName(i, BOOKTYPE_SPELL)
         if not name then break end
+        name = string.gsub(name, "^%s*(.-)%s*$", "%1")
         local rank_num = rank_to_number(rank)
         local existing = cache[name]
         if not existing or rank_num > existing.rank_num then
@@ -85,15 +87,15 @@ local function build_spellbook_cache()
     return cache
 end
 
--- ==================== Action Bar Upgrade Sweep ====================
+-- ==================== Unified Action Bar Spell Updater ====================
 
-local function update_all_action_spells()
+local function update_action_bar_spells(filter_names, report_summary)
     local spellbook = build_spellbook_cache()
     local updated_count = 0
 
     for slot = 1, 120 do
         local name, rank_str = get_action_spell_info(slot)
-        if name and spellbook[name] then
+        if name and (not filter_names or filter_names[name]) and spellbook[name] then
             local best = spellbook[name]
             if best.rank_num > 0 then
                 local current_rn = rank_to_number(rank_str)
@@ -112,77 +114,133 @@ local function update_all_action_spells()
         end
     end
 
-    if updated_count > 0 then
-        DEFAULT_CHAT_FRAME:AddMessage(
-            "|cff20b2aa[OzAiO] " ..
-            string.format(L["Update complete: %d spell(s) updated"], updated_count) ..
-            "|r"
-        )
-    else
-        DEFAULT_CHAT_FRAME:AddMessage(
-            "|cff20b2aa[OzAiO] " .. L["All spells are up-to-date"] .. "|r"
-        )
+    if report_summary then
+        if updated_count > 0 then
+            DEFAULT_CHAT_FRAME:AddMessage(
+                "|cff20b2aa[OzAiO] " ..
+                string.format(L["Update complete: %d spell(s) updated"], updated_count) ..
+                "|r"
+            )
+        else
+            DEFAULT_CHAT_FRAME:AddMessage(
+                "|cff20b2aa[OzAiO] " .. L["All spells are up-to-date"] .. "|r"
+            )
+        end
     end
+
+    return updated_count
 end
 
--- ==================== Learn Event Detection ====================
+-- ==================== Learn Event Detection & Dispatch ====================
+
+local learn_patterns = nil
+
+local function build_learn_patterns()
+    if learn_patterns then return learn_patterns end
+    learn_patterns = {}
+
+    local function add_fmt_pattern(fmt)
+        if type(fmt) == "string" and fmt ~= "" then
+            -- Escape Lua pattern magic characters
+            local p = string.gsub(fmt, "([%(%)%.%%%+%-%*%?%[%^%$])", "%%%1")
+            -- Replace %s with (.+)
+            p = string.gsub(p, "%%%%s", "(.+)")
+            table.insert(learn_patterns, "^" .. p .. "$")
+            -- Relaxed version without strict trailing punctuation
+            local relaxed = string.gsub(p, "[。%.%s]+$", "")
+            if relaxed ~= p then
+                table.insert(learn_patterns, "^" .. relaxed .. "[。%.%s]*$")
+            end
+        end
+    end
+
+    -- Add client GlobalStrings if available
+    local g_learn_spell = rawget(_G, "ERR_LEARN_SPELL_S") or (getglobal and getglobal("ERR_LEARN_SPELL_S")) or
+    ERR_LEARN_SPELL_S
+    local g_learn_ability = rawget(_G, "ERR_LEARN_ABILITY_S") or (getglobal and getglobal("ERR_LEARN_ABILITY_S")) or
+    ERR_LEARN_ABILITY_S
+    add_fmt_pattern(g_learn_spell)
+    add_fmt_pattern(g_learn_ability)
+
+    -- Fallback static patterns for common locales (zhCN, zhTW, enUS)
+    -- zhCN
+    table.insert(learn_patterns, "^你学会了新法术：(.+)")
+    table.insert(learn_patterns, "^你学会了新技能：(.+)")
+    table.insert(learn_patterns, "^你学会了一个新的法术：(.+)")
+    table.insert(learn_patterns, "^你学会了一项新技能：(.+)")
+    -- zhTW
+    table.insert(learn_patterns, "^你學會了新法術：(.+)")
+    table.insert(learn_patterns, "^你學會了新技能：(.+)")
+    table.insert(learn_patterns, "^你學會了一個新的法術：(.+)")
+    table.insert(learn_patterns, "^你學會了一項新技能：(.+)")
+    -- enUS / generic
+    table.insert(learn_patterns, "^You have learned a new spell: (.+)")
+    table.insert(learn_patterns, "^You have learned a new ability: (.+)")
+
+    return learn_patterns
+end
 
 local function parse_learned_spell(msg)
     if not msg then return nil end
 
-    -- enUS: "You have learned a new spell: Fireball (Rank 2)." or "You have learned a new spell: Blink."
-    local _, _, raw_en = string.find(msg, "^You have learned a new spell: (.+)%.$")
-    if raw_en then
-        local clean = string.gsub(raw_en, "%s*%b()$", "")
-        return clean
+    local raw_name = nil
+    local patterns = build_learn_patterns()
+    for _, pat in ipairs(patterns) do
+        local _, _, captured = string.find(msg, pat)
+        if captured then
+            raw_name = captured
+            break
+        end
     end
 
-    -- zhCN: "你学会了一个新的法术：火球术（等级 2）。" or "你学会了一个新的法术：闪现术。"
-    local _, _, raw_cn = string.find(msg, "^你学会了一个新的法术：(.+)[。%.]?$")
-    if raw_cn then
-        local clean = string.gsub(raw_cn, "（.-）$", "")
-        clean = string.gsub(clean, "%s*%b()$", "")
-        return clean
+    if not raw_name then return nil end
+
+    -- Strip trailing punctuation (Chinese full stop 。, English dot ., exclamation mark !, spaces)
+    raw_name = string.gsub(raw_name, "[。%.%!%s]+$", "")
+
+    -- Strip rank suffix:
+    -- zhCN/zhTW fullwidth parentheses: e.g. （等级 2）, （等級 2）, （等级2）
+    raw_name = string.gsub(raw_name, "（.-）%s*$", "")
+    -- Halfwidth parentheses: e.g. (Rank 2), (等级 2), (2)
+    raw_name = string.gsub(raw_name, "%s*%b()%s*$", "")
+
+    -- Clean trailing punctuation again after stripping parentheses
+    raw_name = string.gsub(raw_name, "[。%.%!%s]+$", "")
+
+    -- Trim whitespace
+    raw_name = string.gsub(raw_name, "^%s*(.-)%s*$", "%1")
+
+    if raw_name ~= "" then
+        return raw_name
     end
 
     return nil
 end
 
 local pending_learned_spells = {}
+local has_learned_event = false
+
 local learn_dispatch_frame = CreateFrame("Frame")
 learn_dispatch_frame:Hide()
 learn_dispatch_frame:SetScript("OnUpdate", function()
     this:Hide()
     if not (OZAIO_CONFIG and OZAIO_CONFIG["spell.auto_update_rank"]) then
         pending_learned_spells = {}
+        has_learned_event = false
         return
     end
 
-    local spellbook = build_spellbook_cache()
-    local to_process = pending_learned_spells
-    pending_learned_spells = {}
-
-    for spell_name in pairs(to_process) do
-        local best = spellbook[spell_name]
-        if best and best.rank_num > 0 then
-            for slot = 1, 120 do
-                local name, rank_str = get_action_spell_info(slot)
-                if name and name == spell_name then
-                    local current_rn = rank_to_number(rank_str)
-                    if best.rank_num > current_rn then
-                        PickupSpell(best.index, BOOKTYPE_SPELL)
-                        PlaceAction(slot)
-                        ClearCursor()
-                        DEFAULT_CHAT_FRAME:AddMessage(
-                            "|cff20b2aa[OzAiO] " ..
-                            string.format(L["Slot #%d updated: %s (%s)"], slot, spell_name, best.rank or "??") ..
-                            "|r"
-                        )
-                    end
-                end
-            end
-        end
+    local filter = nil
+    if next(pending_learned_spells) then
+        filter = pending_learned_spells
+    elseif not has_learned_event then
+        return
     end
+
+    pending_learned_spells = {}
+    has_learned_event = false
+
+    update_action_bar_spells(filter, false)
 end)
 
 -- ==================== Event Frame & Lifecycle ====================
@@ -195,17 +253,22 @@ event_frame:SetScript("OnEvent", function()
             pending_learned_spells[spell_name] = true
             learn_dispatch_frame:Show()
         end
+    elseif event == "LEARNED_SPELL_IN_TAB" then
+        has_learned_event = true
+        learn_dispatch_frame:Show()
     end
 end)
 
 local function enable_update_module()
     event_frame:RegisterEvent("CHAT_MSG_SYSTEM")
+    event_frame:RegisterEvent("LEARNED_SPELL_IN_TAB")
 end
 
 local function disable_update_module()
     event_frame:UnregisterAllEvents()
     learn_dispatch_frame:Hide()
     pending_learned_spells = {}
+    has_learned_event = false
 end
 
 -- ==================== Module Registration ====================
@@ -230,10 +293,10 @@ local module = OzFramework:registerMod({
             type = "button",
             label = L["Update All Action Bar Spells Now"],
             tooltip = L["Click to check all action bar buttons and update to highest known rank"],
-            width = 220,
+            width = 240,
             height = 24,
             func = function()
-                update_all_action_spells()
+                update_action_bar_spells(nil, true)
             end,
         },
     },

@@ -359,8 +359,10 @@ end
 
 function lib:createLabel(parent, text, font)
     local fs = parent:CreateFontString(nil, "ARTWORK", font or self.Fonts.normal)
-    fs:SetText(text or ""); fs:SetJustifyV("MIDDLE")
-    self:setSize(fs, fs:GetStringWidth() or 100, fs:GetHeight() > 0 and fs:GetHeight() or 14)
+    fs:SetText(text or ""); fs:SetJustifyV("MIDDLE"); fs:SetJustifyH("LEFT")
+    local w = math.ceil((fs:GetStringWidth() or 0) + 6)
+    local h = (fs:GetHeight() and fs:GetHeight() > 0) and fs:GetHeight() or 14
+    fs._layout = { width = math.max(w, 20), height = h }
     return fs
 end
 
@@ -370,9 +372,32 @@ end
 
 function lib:createButton(parent, text, onClick, width, height)
     local btn = CreateFrame("Button", self:nextName("Btn"), parent, "UIPanelButtonTemplate")
-    self:setSize(btn, width or M.buttonW, height or M.buttonH)
     btn:SetText(text or "")
+    local fs = btn:GetFontString()
+    local textW = fs and fs:GetStringWidth() or 0
+    -- UIPanelButtonTemplate has 12px left + 12px right border textures.
+    -- Extra safety padding (28px) prevents Chinese characters and custom fonts from wrapping.
+    local minW = math.ceil(textW + 28)
+    local finalW = width or math.max(M.buttonW, minW)
+    if width and width < minW then
+        finalW = minW
+    end
+    self:setSize(btn, finalW, height or M.buttonH)
     if onClick then btn:SetScript("OnClick", onClick) end
+
+    local origSetText = btn.SetText
+    btn.SetText = function(thisBtn, newText)
+        origSetText(thisBtn, newText)
+        local fontStr = thisBtn:GetFontString()
+        if fontStr then
+            local tw = fontStr:GetStringWidth() or 0
+            local needed = math.ceil(tw + 28)
+            if needed > thisBtn:GetWidth() then
+                lib:setSize(thisBtn, needed, thisBtn:GetHeight())
+            end
+        end
+    end
+
     return btn
 end
 
@@ -512,7 +537,8 @@ function lib:createCheckbox(parent, text, value, onChange)
 
     local lbl = f:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     lbl:SetPoint("LEFT", cb, "RIGHT", M.checkboxGap, 0); lbl:SetText(text or "")
-    self:setSize(f, M.widgetH + M.checkboxGap + lbl:GetStringWidth(), M.widgetH)
+    local strW = math.ceil((lbl:GetStringWidth() or 0) + 8)
+    self:setSize(f, M.widgetH + M.checkboxGap + strW, M.widgetH)
 
     local function sync() if cb:GetChecked() then check:Show() else check:Hide() end end
     cb:SetChecked((value and value ~= 0 and value ~= "0") and 1 or nil); sync()
@@ -539,7 +565,8 @@ function lib:createLabeledEditBox(parent, labelText, editWidth)
     local ew = editWidth or M.editBoxW
     local edit = self:createEditBox(widget, ew, M.editBoxH)
     edit:SetPoint("LEFT", label, "RIGHT", M.labelGap, 0)
-    self:setSize(widget, label:GetStringWidth() + M.labelGap + ew, M.widgetH)
+    local labelW = math.ceil((label:GetStringWidth() or 0) + 8)
+    self:setSize(widget, labelW + M.labelGap + ew, M.widgetH)
 
     widget.editBox, widget._callback = edit, nil
     function widget:SetValue(v) self.editBox:SetText(tostring(v)) end
@@ -716,7 +743,8 @@ function lib:createDropdown(parent, label, options, defaultValue, onChange)
         end
     end)
 
-    self:setSize(f, lbl:GetStringWidth() + DD.labelGap + btnW, DD.height)
+    local labelW = math.ceil((lbl:GetStringWidth() or 0) + (labelText and labelText ~= "" and 8 or 0))
+    self:setSize(f, labelW + DD.labelGap + btnW, DD.height)
     function f:SetValue(v) btnText:SetText(getLabel(v)) end
 
     function f:GetValue()

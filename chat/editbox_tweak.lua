@@ -1,8 +1,4 @@
 -- Chat EditBox Tweaks (CHT-07)
--- References ShaguTweaks (chat-input-center.lua & chat-tweaks.lua):
--- 1. Centers ChatFrameEditBox and dodges bottom action bars via UIParent_ManageFramePositions.
--- 2. Enables direct Up/Down arrow history iteration without holding Alt.
-
 local LOCALE = GetLocale()
 local L = setmetatable({}, {
     __index = function(t, k)
@@ -18,38 +14,29 @@ if LOCALE == "zhCN" then
     "将聊天输入框居中并避开动作条，支持无需按Alt直接用上下键翻阅聊天历史。"
 end
 
+local DODGE_GAP = 8
+local orig_ClearAllPoints, orig_SetPoint
+
 local dodge_frames = {
-    "MainMenuBarArtFrame",
+    "MainMenuBar",
+    "BonusActionBarFrame",
+    "ShapeshiftBarFrame",
+    "PetActionBarFrame",
     "MultiBarBottomLeft",
     "MultiBarBottomRight",
-    "PetActionBarFrame",
-    "ShapeshiftBarFrame",
 }
 
-local last_top = nil
-
-local function is_pfui_active()
-    return type(pfUI) == "table" or (IsAddOnLoaded and IsAddOnLoaded("pfUI"))
-end
-
-local function update_position()
-    if is_pfui_active() then return end
-    if not ChatFrameEditBox then return end
-
+local function get_dodge_top()
     local top = 0
     for _, name in ipairs(dodge_frames) do
         local frame = getglobal(name)
         if frame and frame:IsVisible() and frame:GetTop() then
-            top = math.max(top, frame:GetTop())
+            local frameTop = (frame:GetTop() * frame:GetEffectiveScale())
+            top = math.max(frameTop, top)
         end
     end
-
-    if top == last_top then return end
-    last_top = top
-
-    ChatFrameEditBox:ClearAllPoints()
-    ChatFrameEditBox:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, top)
-    ChatFrameEditBox:SetWidth(300)
+    if top == 0 then top = 200 end
+    return top
 end
 
 local function enable_editbox()
@@ -59,26 +46,37 @@ local function enable_editbox()
     if not ChatFrameEditBox then return end
     ChatFrameEditBox:SetAltArrowKeyMode(false)
 
-    if not is_pfui_active() then
-        last_top = nil
-        ChatFrameEditBox:ClearAllPoints()
-        ChatFrameEditBox:SetWidth(300)
-        OzHook:hook("UIParent_ManageFramePositions", nil, update_position)
-        update_position()
+    if not orig_ClearAllPoints then
+        orig_ClearAllPoints = ChatFrameEditBox.ClearAllPoints
+        orig_SetPoint = ChatFrameEditBox.SetPoint
     end
+
+    -- Also lock SetPoint and ClearAllPoints
+    local top = math.floor(get_dodge_top() + 0.5) + DODGE_GAP
+    local halfWidth = 300
+
+    ChatFrameEditBox:ClearAllPoints()
+    ChatFrameEditBox:SetPoint("BOTTOMLEFT", UIParent, "BOTTOM", -halfWidth, top)
+    ChatFrameEditBox:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOM", halfWidth, top)
+
+    ChatFrameEditBox.ClearAllPoints = function() end
+    ChatFrameEditBox.SetPoint = function() end
 end
 
 local function disable_editbox()
     if not ChatFrameEditBox then return end
     ChatFrameEditBox:SetAltArrowKeyMode(true)
-    if not is_pfui_active() then
-        OzHook:unhook("UIParent_ManageFramePositions", update_position)
-        last_top = nil
+
+    if orig_ClearAllPoints and orig_SetPoint then
+        -- Restore methods
+        ChatFrameEditBox.ClearAllPoints = orig_ClearAllPoints
+        ChatFrameEditBox.SetPoint = orig_SetPoint
+        orig_ClearAllPoints = nil
+        orig_SetPoint = nil
+
         ChatFrameEditBox:ClearAllPoints()
-        if DEFAULT_CHAT_FRAME then
-            ChatFrameEditBox:SetPoint("TOPLEFT", DEFAULT_CHAT_FRAME, "BOTTOMLEFT", -5, -2)
-            ChatFrameEditBox:SetPoint("TOPRIGHT", DEFAULT_CHAT_FRAME, "BOTTOMRIGHT", 5, -2)
-        end
+        ChatFrameEditBox:SetPoint("TOPLEFT", chatFrame, "BOTTOMLEFT", -5, -2)
+        ChatFrameEditBox:SetPoint("TOPRIGHT", chatFrame, "BOTTOMRIGHT", 5, -2)
     end
 end
 

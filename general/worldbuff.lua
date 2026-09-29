@@ -83,7 +83,10 @@ local RELAY_PREFIX = "MPWB"
 local LIGHTNING_DELAY = 18
 local LFT_CHANNEL = "LFT"
 local SOUND_PATH = "Interface\\AddOns\\OzAiO\\sound\\wb_alert.ogg"
-local FONT_PATH = "Fonts\\FRIZQT__.TTF"
+local FONT_PATH = (GameFontNormal and GameFontNormal.GetFont and GameFontNormal:GetFont())
+    or (STANDARD_TEXT_FONT and STANDARD_TEXT_FONT ~= "" and STANDARD_TEXT_FONT)
+    or (locale == "zhCN" and "Fonts\\FZBWJW.TTF")
+    or "Fonts\\FRIZQT__.TTF"
 
 -- TWB channel sync (world buff timers), protocol compatible with WorldBuffsTracker
 local TWB_CHANNEL = "TWB"
