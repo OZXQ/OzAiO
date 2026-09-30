@@ -128,22 +128,6 @@ end
 
 -- ==================== Module Registration ====================
 
--- Legacy registration: OzFramework:register(id, mod)
-function OzFramework:register(id, mod)
-    if OzFramework.core.modules[id] then
-        return OzFramework.core.modules[id]
-    end
-
-    mod.id = id
-    mod.config = mod.config or {}
-    local norm = mod.category and CATEGORY_NORMALIZE[string.lower(mod.category)]
-    mod.category = norm or "General"
-    mod.order = mod.order or 50
-
-    OzFramework.core.modules[id] = mod
-    return mod
-end
-
 -- Modern registration: OzFramework:registerMod({ name, category, order, config_ui_creator, enable, disable })
 function OzFramework:registerMod(opts)
     if not opts then return end
@@ -178,21 +162,7 @@ function OzFramework:registerMod(opts)
 end
 
 local OBSOLETE_CONFIG_KEYS = {
-    "quest.shared_accept",
-    "minimap.hideSystemButtons",
-    "worldbuff.autoLogout",
-    "worldbuff.timerPos",
-    "superwow.autoloot",
-    "superwow.shiftloot",
-    "superwow.clickthrough",
-    "superwow.lootsparkle",
-    "superwow.selectioncirclestyle",
-    "superwow.backgroundsound",
-    "superwow.uncappedsounds",
-    "general.fontsize",
-    "general.dismount",
-    "general.stance",
-    "chat.short_channel",
+
 }
 
 -- Merge module default config values into OZAIO_CONFIG for any missing keys
@@ -325,53 +295,6 @@ local function create_schema_widget(parent, item)
     end
 
     return widget
-end
-
-local function build_schema_ui(panel, creator, mod)
-    local schema = creator
-    if type(creator) == "function" then
-        schema = creator(panel)
-    end
-    if not schema then return end
-
-    -- Support returning a frame directly from creator
-    if type(schema) == "table" and (schema.IsObjectType or schema.frame) then
-        local f = schema.frame or schema
-        local h = schema.height or (f.GetHeight and f:GetHeight()) or 200
-        f._fullWidth = true
-        panel:Add(f, { height = h, fullWidth = true })
-        return
-    end
-
-    if type(schema) ~= "table" then return end
-
-    for _, item in ipairs(schema) do
-        if type(item) == "table" then
-            local itype = item.type and string.lower(item.type) or "label"
-            if itype == "space" then
-                panel:AddSpace(item.height or 8)
-            elseif itype == "row" and type(item.items) == "table" then
-                local rowWidgets = {}
-                for _, subItem in ipairs(item.items) do
-                    local w = create_schema_widget(panel.scrollChild, subItem)
-                    if w then
-                        table.insert(rowWidgets, w)
-                    end
-                end
-                if table.getn(rowWidgets) > 0 then
-                    panel:AddRow(rowWidgets, { rowSpacing = item.rowSpacing })
-                end
-            else
-                local w = create_schema_widget(panel.scrollChild, item)
-                if w then
-                    panel:Add(w, {
-                        height = item.height,
-                        fullWidth = item.fullWidth or (itype == "header"),
-                    })
-                end
-            end
-        end
-    end
 end
 
 -- ==================== Config UI Construction ====================
@@ -838,7 +761,6 @@ end
 
 -- ==================== Slash Commands ====================
 
-SLASH_OZAIO1 = "/oz"
 SLASH_OZAIO2 = "/ozaio"
 SlashCmdList["OZAIO"] = function()
     toggle_config_ui()

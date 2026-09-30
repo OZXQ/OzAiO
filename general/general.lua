@@ -124,13 +124,6 @@ end
 -- Apply font size to game fonts plus the player/target name plates
 local function apply_all_font_sizes(base_size)
     apply_font_size(base_size)
-
-    if PlayerName and PlayerName.SetFont then
-        set_font_safe(PlayerName, base_size + 4, "OUTLINE", false)
-    end
-    if TargetName and TargetName.SetFont then
-        set_font_safe(TargetName, base_size + 4, "OUTLINE", false)
-    end
 end
 
 -- ================== Feature 3: Auto Dismount / Auto Stance ==================
@@ -241,6 +234,8 @@ local automation_frame = nil
 -- One-shot default-initializer frame (PLAYER_LOGIN), created in module.enable
 local automation_init = nil
 
+local automation_frame = nil
+
 local module = OzFramework:registerMod({
     name = "oz_general",
     title = L["General"],
@@ -311,26 +306,6 @@ local module = OzFramework:registerMod({
                 end
             end)
         end
-
-        -- pfUI / ShaguTweaks conflict detection
-        if not automation_init then
-            automation_init = CreateFrame("Frame")
-            automation_init:RegisterEvent("PLAYER_LOGIN")
-            automation_init:SetScript("OnEvent", function()
-                automation_init:UnregisterAllEvents()
-                local is_conflict = type(pfUI) == "table"
-                    or type(ShaguTweaks) == "table"
-                    or IsAddOnLoaded("pfUI")
-                    or IsAddOnLoaded("ShaguTweaks")
-                if is_conflict then
-                    if automation_frame then
-                        automation_frame:UnregisterAllEvents()
-                        automation_frame:SetScript("OnEvent", nil)
-                    end
-                    OzLib.print(L["Auto Dismount and Auto Stance disabled: pfUI/ShaguTweaks detected"], "error")
-                end
-            end)
-        end
     end,
     disable = function(self)
         if automation_frame then
@@ -338,13 +313,14 @@ local module = OzFramework:registerMod({
             automation_frame:SetScript("OnEvent", nil)
             automation_frame = nil
         end
-        if automation_init then
-            automation_init:UnregisterAllEvents()
-            automation_init:SetScript("OnEvent", nil)
-            automation_init = nil
-        end
     end,
 })
+
+module.on_config_change = function(self, key, value)
+    if key == "general.font_size" then
+        apply_all_font_sizes(value)
+    end
+end
 
 module.on_config_change = function(self, key, value)
     if key == "general.font_size" then
