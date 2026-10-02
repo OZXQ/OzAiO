@@ -43,8 +43,13 @@ end
 local TT_BG         = "Interface\\Tooltips\\UI-Tooltip-Background"
 local TT_BD         = "Interface\\Tooltips\\UI-Tooltip-Border"
 
-lib.Fonts           = { normal = "GameFontNormal", small = "GameFontNormalSmall", large = "GameFontNormalLarge", huge =
-"GameFontNormalHuge" }
+lib.Fonts           = {
+    normal = "GameFontNormal",
+    small = "GameFontNormalSmall",
+    large = "GameFontNormalLarge",
+    huge =
+    "GameFontNormalHuge"
+}
 lib.Theme           = {
     backdrop = {
         widget       = mkBackdrop(TT_BG, TT_BD, 1, 2),
@@ -66,26 +71,26 @@ lib.BlizaadBackdrop = lib.Theme.backdrop.blizaad
 lib.PFUIBackdrop    = lib.Theme.backdrop.flat
 
 lib.Metrics         = {
-    padding = 4,
-    spacing = 2,
+    padding     = 4,
+    spacing     = 2,
     lineSpacing = 1,
-    widgetH = 18,
-    editBoxW = 60,
-    editBoxH = 18,
-    buttonW = 90,
-    buttonH = 20,
+    widgetH     = 18,
+    editBoxW    = 60,
+    editBoxH    = 18,
+    buttonW     = 90,
+    buttonH     = 20,
     checkboxGap = 4,
-    labelGap = 6,
-    list    = { rowH = 22, contentRightInset = 20, rowPadX = 5, rowPadTop = 2, rowPadBottom = 4, namePadX = 2, qtyPadX = 2, qtyGap = 8 },
-    dialog  = {
-        width = 500,
+    labelGap    = 6,
+    list        = { rowH = 22, contentRightInset = 20, rowPadX = 5, rowPadTop = 2, rowPadBottom = 4, namePadX = 2, qtyPadX = 2, qtyGap = 8 },
+    dialog      = {
+        width  = 500,
         height = 600,
         header = { height = 48, insetL = 11, insetR = 12, insetT = 12 },
         main   = { margin = 15, topOffset = -64, bottomOffset = 15, gap = 5 },
         tab    = { width = 120, btnW = 100, btnH = 16, flowPad = 16 },
         scroll = { step = 22 }
     },
-    minimap = { btnSize = 32, radius = 80, iconSize = 21, iconOffX = 7, iconOffY = -6, overlaySize = 56, texCoord = { 0.075, 0.925, 0.075, 0.925 } }
+    minimap     = { btnSize = 32, radius = 80, iconSize = 21, iconOffX = 7, iconOffY = -6, overlaySize = 56, texCoord = { 0.075, 0.925, 0.075, 0.925 } }
 }
 local M             = lib.Metrics
 
@@ -113,7 +118,7 @@ local function getTooltip()
         tooltip:SetBackdropColor(0, 0, 0, 0.9); tooltip:SetBackdropBorderColor(0.8, 0.8, 0.8, 1)
         tooltip.title = tooltip:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
         tooltip.title:SetPoint("TOPLEFT", 10, -10); tooltip.title:SetTextColor(1, 0.82, 0); tooltip.title:SetJustifyH(
-        "LEFT")
+            "LEFT")
         tooltip.desc = tooltip:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
         tooltip.desc:SetPoint("TOPLEFT", tooltip.title, "BOTTOMLEFT", 0, -4); tooltip.desc:SetTextColor(0.85, 0.85, 0.85); tooltip
             .desc:SetJustifyH("LEFT")
@@ -163,15 +168,26 @@ function lib:createFlow(parent, opts)
     local p = type(opts) == "number" and opts or (type(opts) == "table" and opts.padding) or self.Metrics.padding
     local sp = (type(opts) == "table" and opts.spacing) or self.Metrics.spacing
     local ls = (type(opts) == "table" and opts.lineSpacing) or self.Metrics.lineSpacing
-    return { parent = parent, x = p, y = -p, startX = p, padding = p, spacing = sp, lineSpacing = ls, lineHeight = 0, items = {}, maxWidth =
-    parent:GetWidth() - p }
+    return {
+        parent = parent,
+        x = p,
+        y = -p,
+        startX = p,
+        padding = p,
+        spacing = sp,
+        lineSpacing = ls,
+        lineHeight = 0,
+        items = {},
+        maxWidth =
+            parent:GetWidth() - p
+    }
 end
 
 function lib:add(flow, widget, width, height)
     if not flow or not widget then return end
     local w = width or (widget._layout and widget._layout.width) or (widget.GetWidth and widget:GetWidth()) or M.buttonW
     local h = height or (widget._layout and widget._layout.height) or (widget.GetHeight and widget:GetHeight()) or
-    M.widgetH
+        M.widgetH
 
     widget:ClearAllPoints()
     widget:SetPoint("TOPLEFT", flow.parent, "TOPLEFT", flow.x, flow.y)
@@ -269,7 +285,7 @@ function lib:createScrollPanel(parent, opts)
         if not widget then return end
         local wo = wOpts or {}
         local h = wo.height or (widget._layout and widget._layout.height) or (widget.GetHeight and widget:GetHeight()) or
-        24
+            24
         widget:ClearAllPoints(); widget:SetParent(sc)
         widget:SetPoint("TOPLEFT", sc, "TOPLEFT", self.padding, self.currentY)
         if wo.fullWidth or widget._fullWidth then
@@ -293,7 +309,7 @@ function lib:createScrollPanel(parent, opts)
 
         for _, w in ipairs(rowWidgets) do
             local width = (w._layout and w._layout.width) or (w.GetStringWidth and w:GetStringWidth()) or
-            (w.GetWidth and w:GetWidth()) or 100
+                (w.GetWidth and w:GetWidth()) or 100
             local height = (w._layout and w._layout.height) or (w.GetHeight and w:GetHeight()) or 20
             w:ClearAllPoints(); w:SetParent(sc)
             w:SetPoint("TOPLEFT", sc, "TOPLEFT", x, self.currentY)
@@ -326,7 +342,7 @@ function lib:dock(w, parent, side, size, pad)
             :SetHeight(size)
     elseif side == "bottom" then
         self:anchor(w, parent, "BOTTOMLEFT", "BOTTOMLEFT", p, p); self:anchor(w, parent, "BOTTOMRIGHT", "BOTTOMRIGHT", -
-        p, p); w:SetHeight(size)
+            p, p); w:SetHeight(size)
     elseif side == "left" then
         self:anchor(w, parent, "TOPLEFT", "TOPLEFT", p, -p); self:anchor(w, parent, "BOTTOMLEFT", "BOTTOMLEFT", p, p); w
             :SetWidth(size)
@@ -407,9 +423,11 @@ function lib:createEditBox(parent, width, height, onEnter)
     eb:SetAutoFocus(false); eb:SetFontObject(GameFontNormal)
     if eb.SetTextInsets then eb:SetTextInsets(4, 4, 0, 0) end
     self:applyBackdrop(eb, "widget")
-    if onEnter then eb:SetScript("OnEnterPressed", function()
+    if onEnter then
+        eb:SetScript("OnEnterPressed", function()
             onEnter(eb:GetText()); eb:ClearFocus()
-        end) end
+        end)
+    end
     return eb
 end
 
@@ -473,7 +491,7 @@ function lib:createFoldableHeader(parent, text, isFolded, onToggle, locTable)
     frame:SetScript("OnEnter", function()
         fs:SetTextColor(1, 1, 1)
         local tip = this.isFolded and get_loc("Click to expand this section.", "Click to expand this section.") or
-        get_loc("Click to collapse this section.", "Click to collapse this section.")
+            get_loc("Click to collapse this section.", "Click to collapse this section.")
         lib:showTooltip(this, text, tip, "ANCHOR_TOPLEFT")
     end)
     frame:SetScript("OnLeave", function()
@@ -484,7 +502,7 @@ function lib:createFoldableHeader(parent, text, isFolded, onToggle, locTable)
         if onToggle then onToggle(this) end
         if this:IsShown() and tooltip and tooltip:IsShown() then
             local tip = this.isFolded and get_loc("Click to expand this section.", "Click to expand this section.") or
-            get_loc("Click to collapse this section.", "Click to collapse this section.")
+                get_loc("Click to collapse this section.", "Click to collapse this section.")
             lib:showTooltip(this, text, tip, "ANCHOR_TOPLEFT")
         end
     end)
@@ -533,7 +551,7 @@ function lib:createCheckbox(parent, text, value, onChange)
     cb:SetPoint("LEFT", 0, 0); self:setSize(cb, M.widgetH, M.widgetH); self:applyBackdrop(cb, "widget")
     local check = cb:CreateTexture(nil, "OVERLAY")
     check:SetTexture("Interface\\Buttons\\UI-CheckBox-Check"); check:SetPoint("TOPLEFT", 1, -1); check:SetPoint(
-    "BOTTOMRIGHT", -1, 1); check:Hide()
+        "BOTTOMRIGHT", -1, 1); check:Hide()
 
     local lbl = f:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     lbl:SetPoint("LEFT", cb, "RIGHT", M.checkboxGap, 0); lbl:SetText(text or "")

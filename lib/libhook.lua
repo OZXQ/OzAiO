@@ -60,28 +60,31 @@ local function regKey(obj, name)
     return obj
 end
 
+-- Wrappers sit on the hottest paths in the client (a chat event fires once per
+-- chat window, AddMessage once per chat line), so a call must not allocate.
+--
+-- Lua 5.0 has no `...` *expression*, and a vararg function makes the VM build
+-- an `arg` table on every single call, so the wrapper keeps a fixed parameter
+-- list and forwards arguments by value. The ten slots cover every hook target
+-- in this addon (widest: ChatFrame:AddMessage(frame, msg, r, g, b, id)
+-- with 6); unused slots are plain nil, which these APIs cannot tell apart from
+-- "not passed". Forwarding positionally also stops a nil in the middle from
+-- truncating the tail the way unpack()/getn() did.
 local function createWrapper(entry)
     local orig = entry.orig
+    local pre = entry.pre
+    local post = entry.post
+    -- Reused buffer for a pre-hook that replaces the argument list. Lua pads a
+    -- multiple assignment with nils, so this never needs clearing.
+    local ret = {}
 
-    return function(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10,
-                    a11, a12, a13, a14, a15, a16, a17, a18, a19, a20)
+    return function(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10)
         -- Prevent recursive hook execution
         if entry.running then
-            return orig(
-                a1, a2, a3, a4, a5, a6, a7, a8, a9, a10,
-                a11, a12, a13, a14, a15, a16, a17, a18, a19, a20
-            )
+            return orig(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10)
         end
 
         entry.running = true
-
-        -- Current argument list (may be replaced by pre-hooks)
-        local args = {
-            a1, a2, a3, a4, a5,
-            a6, a7, a8, a9, a10,
-            a11, a12, a13, a14, a15,
-            a16, a17, a18, a19, a20
-        }
 
         ----------------------------------------------------------------
         -- Pre hooks
@@ -89,8 +92,10 @@ local function createWrapper(entry)
         -- return nil        -> leave arguments unchanged
         -- return (...)      -> replace arguments
         ----------------------------------------------------------------
-        for _, fn in ipairs(entry.pre) do
-            local ret = { fn(unpack(args)) }
+        for i = 1, table.getn(pre) do
+            ret[1], ret[2], ret[3], ret[4], ret[5],
+            ret[6], ret[7], ret[8], ret[9], ret[10] =
+                pre[i](a1, a2, a3, a4, a5, a6, a7, a8, a9, a10)
 
             if ret[1] == false then
                 entry.running = nil
@@ -98,23 +103,32 @@ local function createWrapper(entry)
             end
 
             if ret[1] ~= nil then
-                args = ret
+                a1, a2, a3, a4, a5, a6, a7, a8, a9, a10 =
+                    ret[1], ret[2], ret[3], ret[4], ret[5],
+                    ret[6], ret[7], ret[8], ret[9], ret[10]
             end
         end
 
         ----------------------------------------------------------------
         -- Original function
         ----------------------------------------------------------------
+        if table.getn(post) == 0 then
+            -- No post hooks: return the original results straight through
+            -- instead of packing them into a throwaway table.
+            entry.running = nil
+            return orig(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10)
+        end
+
         local results = {
-            orig(unpack(args))
+            orig(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10)
         }
 
         ----------------------------------------------------------------
         -- Post hooks
         -- Receive the final arguments (same API as before)
         ----------------------------------------------------------------
-        for _, fn in ipairs(entry.post) do
-            fn(unpack(args))
+        for i = 1, table.getn(post) do
+            post[i](a1, a2, a3, a4, a5, a6, a7, a8, a9, a10)
         end
 
         entry.running = nil

@@ -6,6 +6,14 @@ ozChat = ozChat or {
     displayFilters = {},
 }
 
+-- Chat events fire once per chat window (up to 7) and AddMessage runs for every
+-- single chat line, so both pipelines recycle one scratch object instead of
+-- allocating a fresh table per call. Filters consume the object synchronously
+-- and never keep a reference to it, so sharing is safe.
+local evt_scratch = {}
+local dsp_scratch = {}
+local dsp_busy = false
+
 function ozChat:regEvtFilter(name, func)
     self.eventFilters[name] = func
 end
@@ -15,21 +23,20 @@ function ozChat:regDspFilter(name, func)
 end
 
 function ozChat:buildChatObject(frame, event)
-    local chat = {
-        frame       = frame,
-        frameId     = frame and frame:GetID() or nil,
-        event       = event,
-        type        = string.sub(event, 10), -- SAY, WHISPER, CHANNEL...
-        message     = arg1,
-        sender      = arg2,
-        language    = arg3,
-        channelName = arg4,
-        senderFull  = arg5,
-        channelNum  = arg8,
-        channelId   = arg9,
-        cancelled   = false,
-        redirect    = 0,
-    }
+    local chat = evt_scratch
+    chat.frame       = frame
+    chat.frameId     = frame and frame:GetID() or nil
+    chat.event       = event
+    chat.type        = string.sub(event, 10) -- SAY, WHISPER, CHANNEL...
+    chat.message     = arg1
+    chat.sender      = arg2
+    chat.language    = arg3
+    chat.channelName = arg4
+    chat.senderFull  = arg5
+    chat.channelNum  = arg8
+    chat.channelId   = arg9
+    chat.cancelled   = false
+    chat.redirect    = 0
     return chat
 end
 
@@ -74,15 +81,24 @@ function ozChat:init()
         local cf = getglobal("ChatFrame" .. i)
         if cf then
             OzHook:hook(cf, "AddMessage", function(frame, msg, r, g, b, id)
-                local dspEvent = {
-                    frame = frame,
-                    msg   = msg,
-                    r     = r,
-                    g     = g,
-                    b     = b,
-                    id    = id,
-                }
-                dspEvent = ozChat:runDspFilter(dspEvent)
+                local dspEvent
+                if dsp_busy then
+                    -- Nested AddMessage (a filter printing to chat): use a fresh
+                    -- table so the outer call's scratch object stays intact.
+                    dspEvent = { frame = frame, msg = msg, r = r, g = g, b = b, id = id }
+                    dspEvent = ozChat:runDspFilter(dspEvent)
+                else
+                    dsp_busy = true
+                    dspEvent = dsp_scratch
+                    dspEvent.frame = frame
+                    dspEvent.msg   = msg
+                    dspEvent.r     = r
+                    dspEvent.g     = g
+                    dspEvent.b     = b
+                    dspEvent.id    = id
+                    dspEvent = ozChat:runDspFilter(dspEvent)
+                    dsp_busy = false
+                end
                 return dspEvent.frame, dspEvent.msg, dspEvent.r, dspEvent.g, dspEvent.b, dspEvent.id
             end)
         end

@@ -88,24 +88,29 @@ local function convert_keywords_to_links(msg, sender)
     return msg
 end
 
+-- Player name is needed for every single chat line, so resolve it once instead
+-- of calling UnitName("player") on each message.
+local player_name = UnitName("player")
+
+local function get_player_name()
+    if not player_name or player_name == "" or player_name == "Unknown" then
+        player_name = UnitName("player")
+    end
+    return player_name
+end
+
 -- Event filter pipeline hook for ozChat
 local function filter_click_to_invite(chat)
     if not (OZAIO_CONFIG and OZAIO_CONFIG["chat.click2inv"]) then
         return chat
     end
 
-    if not chat or not chat.message or type(chat.message) ~= "string" or chat.message == "" then
+    if type(chat) ~= "table" then
         return chat
     end
 
-    if not chat.sender or chat.sender == "" then
-        return chat
-    end
-
-    if chat.sender == UnitName("player") then
-        return chat
-    end
-
+    -- Cheapest and most selective test first: only public/group chat is
+    -- converted, so combat log and system traffic never reaches the gsub work.
     local event_type = chat.type
     if event_type ~= "CHANNEL"
         and event_type ~= "WHISPER"
@@ -117,7 +122,17 @@ local function filter_click_to_invite(chat)
         return chat
     end
 
-    local new_message = convert_keywords_to_links(chat.message, chat.sender)
+    local message = chat.message
+    if type(message) ~= "string" or message == "" then
+        return chat
+    end
+
+    local sender = chat.sender
+    if not sender or sender == "" or sender == get_player_name() then
+        return chat
+    end
+
+    local new_message = convert_keywords_to_links(message, sender)
     if new_message then
         chat.message = new_message
     end

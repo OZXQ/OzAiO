@@ -23,22 +23,6 @@ if locale == "zhCN" then
     L["Auto Dismount and Auto Stance disabled: pfUI/ShaguTweaks detected"] = "检测到 pfUI/ShaguTweaks，已默认关闭自动下坐骑和自动切姿态"
 end
 
--- Fallback font if font_object:GetFont() is nil or invalid
-local default_text_font = nil
-if GameFontNormal and GameFontNormal.GetFont then
-    local f = GameFontNormal:GetFont()
-    if f and f ~= "" and not (locale == "zhCN" and string.find(string.upper(f), "ARIALN")) then
-        default_text_font = f
-    end
-end
-if not default_text_font then
-    if STANDARD_TEXT_FONT and STANDARD_TEXT_FONT ~= "" then
-        default_text_font = STANDARD_TEXT_FONT
-    elseif locale == "zhCN" then
-        default_text_font = "Fonts\\FZBWJW.ttf"
-    end
-end
-
 -- Cache original font path and flags per font object so resizing only alters size
 local font_cache = {}
 
@@ -49,81 +33,40 @@ local function set_font_safe(font_object, size, flags_override, is_number)
     local cached = font_cache[font_object]
     if not cached then
         local path, _, original_flags = nil, nil, nil
-        if font_object.GetFont then
-            path, _, original_flags = font_object:GetFont()
+        if font_object.GetFont then path, _, original_flags = font_object:GetFont() end
+        if not path or path == "" or (not is_number and string.find(string.upper(path), "ARIALN")) then
+            path = is_number and "Fonts\\ARIALN.TTF" or (STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF")
         end
-        if not path or path == "" or (locale == "zhCN" and not is_number and string.find(string.upper(path), "ARIALN")) then
-            path = is_number and "Fonts\\ARIALN.TTF" or default_text_font
-        end
-        cached = {
-            path = path,
-            flags = original_flags,
-        }
+        cached = { path = path, flags = original_flags }
         font_cache[font_object] = cached
     end
 
-    local flags = flags_override
-    if flags == nil then
-        flags = cached.flags
-    end
+    font_object:SetFont(cached.path, size, flags_override or cached.flags)
+end
 
-    font_object:SetFont(cached.path, size, flags)
+local function set_group(fonts, size, flags, is_num)
+    for _, f in ipairs(fonts) do set_font_safe(f, size, flags, is_num) end
 end
 
 -- Apply font size across all game font objects
-local function apply_font_size(base_size)
-    if not base_size or type(base_size) ~= "number" or base_size < 8 or base_size > 20 then
-        base_size = 14
-    end
+local function apply_font_size(base)
+    base = (type(base) == "number" and base >= 8 and base <= 20) and base or 14
+    local sm, lg, hg = base - 2, base + 2, base + 6
 
-    local small_size = base_size - 2
-    local large_size = base_size + 2
-    local huge_size = large_size + 4
-
-    -- 1. Core GameFont series
-    set_font_safe(SystemFont, base_size)
-    set_font_safe(GameFontNormal, base_size)
-    set_font_safe(GameFontHighlight, base_size)
-    set_font_safe(GameFontDisable, base_size)
-    set_font_safe(GameFontGreen, base_size)
-    set_font_safe(GameFontRed, base_size)
-    set_font_safe(GameFontBlack, base_size)
-    set_font_safe(GameFontWhite, base_size)
-    set_font_safe(DialogButtonNormalText, base_size)
-    set_font_safe(DialogButtonHighlightText, base_size)
-
-    -- Small (Normal - 2)
-    set_font_safe(GameFontNormalSmall, small_size)
-    set_font_safe(GameFontHighlightSmall, small_size)
-    set_font_safe(GameFontHighlightSmallOutline, small_size, "OUTLINE")
-    set_font_safe(GameFontDisableSmall, small_size)
-    set_font_safe(GameFontGreenSmall, small_size)
-    set_font_safe(GameFontRedSmall, small_size)
-    set_font_safe(GameFontDarkGraySmall, small_size)
-
-    -- Large (Normal + 2)
-    set_font_safe(GameFontNormalLarge, large_size)
-    set_font_safe(GameFontHighlightLarge, large_size)
-    set_font_safe(GameFontDisableLarge, large_size)
-    set_font_safe(GameFontGreenLarge, large_size)
-    set_font_safe(GameFontRedLarge, large_size)
-
-    -- 2. Other common fonts, mapped to corresponding sizes
-    set_font_safe(NumberFontNormal, base_size, "OUTLINE", true)
-    set_font_safe(NumberFontNormalSmall, small_size, "OUTLINE", true)
-    set_font_safe(NumberFontNormalLarge, large_size, "OUTLINE", true)
-    set_font_safe(ChatFontNormal, base_size)
-    set_font_safe(QuestFontNormalSmall, small_size)
-    set_font_safe(QuestTitleFont, huge_size)
-    set_font_safe(TextStatusBarText, small_size)
-    set_font_safe(GameTooltipText, small_size)
-    set_font_safe(GameTooltipHeaderText, base_size, "THICK")
-    set_font_safe(GameFontNormalHuge, huge_size)
-end
-
--- Apply font size to game fonts plus the player/target name plates
-local function apply_all_font_sizes(base_size)
-    apply_font_size(base_size)
+    set_group(
+        { SystemFont, GameFontNormal, GameFontHighlight, GameFontDisable, GameFontGreen, GameFontRed, GameFontBlack,
+            GameFontWhite, DialogButtonNormalText, DialogButtonHighlightText, ChatFontNormal }, base)
+    set_group(
+        { GameFontNormalSmall, GameFontHighlightSmall, GameFontDisableSmall, GameFontGreenSmall, GameFontRedSmall,
+            GameFontDarkGraySmall, QuestFontNormalSmall, TextStatusBarText, GameTooltipText }, sm)
+    set_group(
+        { GameFontNormalLarge, GameFontHighlightLarge, GameFontDisableLarge, GameFontGreenLarge, GameFontRedLarge }, lg)
+    set_group({ QuestTitleFont, GameFontNormalHuge }, hg)
+    set_font_safe(GameFontHighlightSmallOutline, sm, "OUTLINE")
+    set_font_safe(GameTooltipHeaderText, base, "THICK")
+    set_font_safe(NumberFontNormal, base, "OUTLINE", true)
+    set_font_safe(NumberFontNormalSmall, sm, "OUTLINE", true)
+    set_font_safe(NumberFontNormalLarge, lg, "OUTLINE", true)
 end
 
 -- ================== Feature 3: Auto Dismount / Auto Stance ==================
@@ -231,10 +174,9 @@ end
 
 -- Listener frame, created in module.enable
 local automation_frame = nil
--- One-shot default-initializer frame (PLAYER_LOGIN), created in module.enable
-local automation_init = nil
-
-local automation_frame = nil
+-- Delayed font initializer frame for PLAYER_ENTERING_WORLD
+local font_init_frame = nil
+local entered_world = false
 
 local module = OzFramework:registerMod({
     name = "oz_general",
@@ -257,7 +199,7 @@ local module = OzFramework:registerMod({
             config_key = "general.font_size",
             tooltip = L["Small = Normal - 2, Large = Normal + 2"],
             onChange = function(value)
-                apply_all_font_sizes(value)
+                apply_font_size(value)
             end,
         },
         {
@@ -277,37 +219,51 @@ local module = OzFramework:registerMod({
         -- Register /rl command
         if not SlashCmdList["OZAIO_RL"] then
             SLASH_OZAIO_RL1 = "/rl"
-            SlashCmdList["OZAIO_RL"] = function()
-                ReloadUI()
-            end
+            SlashCmdList["OZAIO_RL"] = function() ReloadUI() end
         end
 
-        -- Apply font settings (game fonts + player/target name plates)
-        local baseSize = 14
-        if OZAIO_CONFIG and OZAIO_CONFIG["general.font_size"] then
-            baseSize = OZAIO_CONFIG["general.font_size"]
+        local function apply_current_font()
+            apply_font_size((OZAIO_CONFIG and OZAIO_CONFIG["general.font_size"]) or 14)
         end
-        apply_all_font_sizes(baseSize)
+
+        if entered_world then
+            apply_current_font()
+        elseif not font_init_frame then
+            font_init_frame = CreateFrame("Frame")
+            font_init_frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+            font_init_frame:SetScript("OnEvent", function()
+                entered_world = true
+                font_init_frame:UnregisterAllEvents()
+                local elapsed = 0
+                font_init_frame:SetScript("OnUpdate", function()
+                    elapsed = elapsed + (arg1 or 0)
+                    if elapsed >= 0.1 then
+                        font_init_frame:SetScript("OnUpdate", nil)
+                        apply_current_font()
+                    end
+                end)
+            end)
+        end
 
         -- Auto Dismount / Auto Stance listener (feature 3)
         if not automation_frame then
             automation_frame = CreateFrame("Frame")
             automation_frame:RegisterEvent("UI_ERROR_MESSAGE")
             automation_frame:SetScript("OnEvent", function()
-                local dismountOn = OZAIO_CONFIG and OZAIO_CONFIG["general.auto_dismount"]
-                if dismountOn then
-                    handle_dismount(arg1)
-                end
-                local stanceOn = OZAIO_CONFIG and OZAIO_CONFIG["general.auto_stance"]
-                if stanceOn then
-                    if string.find(arg1, stance_scan) then
-                        handle_stance(arg1)
-                    end
+                if OZAIO_CONFIG and OZAIO_CONFIG["general.auto_dismount"] then handle_dismount(arg1) end
+                if OZAIO_CONFIG and OZAIO_CONFIG["general.auto_stance"] and string.find(arg1, stance_scan) then
+                    handle_stance(arg1)
                 end
             end)
         end
     end,
     disable = function(self)
+        if font_init_frame then
+            font_init_frame:UnregisterAllEvents()
+            font_init_frame:SetScript("OnEvent", nil)
+            font_init_frame:SetScript("OnUpdate", nil)
+            font_init_frame = nil
+        end
         if automation_frame then
             automation_frame:UnregisterAllEvents()
             automation_frame:SetScript("OnEvent", nil)
@@ -318,12 +274,6 @@ local module = OzFramework:registerMod({
 
 module.on_config_change = function(self, key, value)
     if key == "general.font_size" then
-        apply_all_font_sizes(value)
-    end
-end
-
-module.on_config_change = function(self, key, value)
-    if key == "general.font_size" then
-        apply_all_font_sizes(value)
+        apply_font_size(value)
     end
 end
